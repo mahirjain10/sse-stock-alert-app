@@ -16,8 +16,8 @@ type Hub struct {
 
 func NewHub() *Hub {
 	return &Hub{
-		clients:       make(map[*Client]bool),
-		clientMap:     make(map[string]*Client),
+		clients:       make(map[*Client]bool), // is use to register and unregister client 
+		clientMap:     make(map[string]*Client), 
 		tickerMap:     make(map[string][]*Client),
 		activeMonitor: make(map[string]bool), // Initialize the active monitoring map
 		register:      make(chan *Client),
@@ -25,7 +25,7 @@ func NewHub() *Hub {
 	}
 }
 
-func (h *Hub) Run() {
+func (h *Hub) Run() { 
 	for {
 		select {
 		case client := <-h.register:

@@ -13,34 +13,34 @@ import (
 	// model "github.com/mahirjain_10/stock-alert-app/backend/internal/models"
 )
 
-func UpdateActiveStatusUtil(c *gin.Context,ctx context.Context,userID string,alertID string ,updatedStatus bool,app *types.App) {
+func UpdateActiveStatusUtil(c *gin.Context,ctx context.Context,userID string,alertID string ,updatedStatus bool,app *types.App) bool {
 	user, err := models.FindUserByID(app, userID)
 	if err != nil {
 		helpers.SendResponse(c, http.StatusInternalServerError, "Internal server error", nil, nil, false)
-		return
+		return false
 	}
 	
 	if user.ID == "" {
 		helpers.SendResponse(c, http.StatusNotFound, "User not found", nil, nil, false)
-		return
+		return false
 	}
 
 	retrieveStockAlertData, err := models.FindAlertNameByUserIDAndID(app, userID, alertID)
 	if err != nil {
 		helpers.SendResponse(c, http.StatusInternalServerError, "Internal sever error", nil, nil, false)
-		return
+		return false
 	}
 
 	fmt.Println(retrieveStockAlertData)
 	if retrieveStockAlertData.ID == "" {
 		helpers.SendResponse(c, http.StatusNotFound, "Alert with given ID not found", nil, nil, false)
-		return
+		return false
 	}
 
 	err = models.UpdateActiveStatusByID(app, updatedStatus, alertID)
 	if err != nil {
 		helpers.SendResponse(c, http.StatusInternalServerError, "Unable to update alert status ,Try again later", nil, nil, false)
-		return
+		return false
 	}
 
 	if retrieveStockAlertData.Active != updatedStatus {
@@ -53,4 +53,5 @@ func UpdateActiveStatusUtil(c *gin.Context,ctx context.Context,userID string,ale
 			log.Printf("Error updating alert status in Redis for ID %s: %v", userID, err)
 		}
 	}
+	return true
 }

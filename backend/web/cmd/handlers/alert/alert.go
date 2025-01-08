@@ -5,16 +5,14 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/mahirjain_10/stock-alert-app/backend/internal/helpers"
-	model "github.com/mahirjain_10/stock-alert-app/backend/internal/models"
+	"github.com/mahirjain_10/stock-alert-app/backend/internal/models"
 	"github.com/mahirjain_10/stock-alert-app/backend/internal/types"
-
-	// "github.com/mahirjain_10/stock-alert-app/backend/internal/utils"
-	// "github.com/mahirjain_10/stock-alert-app/backend/internal/utils"
 	"github.com/mahirjain_10/stock-alert-app/backend/internal/utils"
 )
 
@@ -48,7 +46,7 @@ func GetCurrentStockPriceAndTime(c *gin.Context, r *gin.Engine, app *types.App) 
 		},
 		"error": nil,
 	}
-
+	
 	// Return the response
 	fmt.Println(stockData)
 	// c.JSON(http.StatusOK, response)
@@ -58,6 +56,7 @@ func GetCurrentStockPriceAndTime(c *gin.Context, r *gin.Engine, app *types.App) 
 func CreateStockAlert(c *gin.Context, r *gin.Engine, app *types.App) {
 	ctx := context.Background()
 	var alertInput types.StockAlert
+	var monitorStockPrice types.MonitorStockPrice
 
 	// Bind and validate JSON input
 	if !helpers.BindAndValidateJSON(c, &alertInput) {
@@ -65,7 +64,7 @@ func CreateStockAlert(c *gin.Context, r *gin.Engine, app *types.App) {
 	}
 
 	// Check if the user exists
-	user, err := model.FindUserByID(app, alertInput.UserID)
+	user, err := models.FindUserByID(app, alertInput.UserID)
 	if err != nil {
 		log.Printf("Error finding user by ID: %v", err)
 		helpers.SendResponse(c, http.StatusInternalServerError, "Internal server error", nil, nil, false)
@@ -78,7 +77,7 @@ func CreateStockAlert(c *gin.Context, r *gin.Engine, app *types.App) {
 	}
 
 	// Check if alert name already exists for the user
-	existingAlert, err := model.FindAlertNameByUserIDAndAlertName(app, alertInput.UserID, alertInput.AlertName)
+	existingAlert, err := models.FindAlertNameByUserIDAndAlertName(app, alertInput.UserID, alertInput.AlertName)
 	if err != nil {
 		log.Printf("Error finding alert name: %v", err)
 		helpers.SendResponse(c, http.StatusInternalServerError, "Internal server error", nil, nil, false)
@@ -98,13 +97,12 @@ func CreateStockAlert(c *gin.Context, r *gin.Engine, app *types.App) {
 	alertInput.ID = uuid.New().String()
 
 	// Insert stock alert data into the database
-	if err := model.InsertStockAlertData(app, alertInput); err != nil {
+	if err := models.InsertStockAlertData(app, alertInput); err != nil {
 		log.Printf("Error inserting stock alert data: %v", err)
 		helpers.SendResponse(c, http.StatusInternalServerError, "Error saving stock alert", nil, nil, false)
 		return
 	}
-
-	// Save alert data in Redis
+		// Save alert data in Redis
 	alertData := map[string]interface{}{
 		"user_id":         user.ID,
 		"ticker":          alertInput.TickerToMonitor,
@@ -118,6 +116,36 @@ func CreateStockAlert(c *gin.Context, r *gin.Engine, app *types.App) {
 	}
 	if err != nil {
 		log.Printf("Error saving alert to Redis: %v\n", err)
+	}
+	
+	// Insert stock monitoring data into database
+	monitorStockPrice.ID=uuid.NewString()
+	monitorStockPrice.AlertID=alertInput.ID
+	monitorStockPrice.TickerToMonitor=alertInput.TickerToMonitor
+	monitorStockPrice.IsActive=true
+
+	err = models.InsertMonitorStockData(app,monitorStockPrice)
+	if err != nil {
+		log.Printf("Error inserting stock monitoring data: %v", err)
+		helpers.SendResponse(c, http.StatusInternalServerError, "Error saving stock monitoring data", nil, nil, false)
+		return
+	}
+	monitorStockHashKey := "monitor_stock:" + monitorStockPrice.ID
+	monitorStockRedis := make(map[string]string)
+	monitorStockRedis["id"]=monitorStockPrice.ID
+	monitorStockRedis["alert_id"]=monitorStockPrice.AlertID
+	monitorStockRedis["ticker"]=monitorStockPrice.TickerToMonitor
+	monitorStockRedis["is_active"]=strconv.FormatBool(monitorStockPrice.IsActive)
+
+
+
+	val, err = app.RedisClient.HSet(ctx, monitorStockHashKey, monitorStockRedis).Result()
+	if val == 0 {
+		log.Println("Data could not saved in redis")
+	}
+	if err != nil {
+		log.Printf("Error saving stock monitoring data to Redis: %v\n", err)
+		return;
 	}
 
 	// Publish alert to Redis channel
@@ -135,9 +163,9 @@ func UpdateStockAlert(c *gin.Context, r *gin.Engine, app *types.App) {
 	}
 
 	// Check if user exists or not
-	user, err := model.FindUserByID(app, updateAlertInput.UserID)
+	user, err := models.FindUserByID(app, updateAlertInput.UserID)
 	if err != nil {
-		helpers.SendResponse(c, http.StatusInternalServerError, "Internal sever error", nil, nil, false)
+		helpers.SendResponse(c, http.StatusInternalServerError, "Internal server error", nil, nil, false)
 		return
 	}
 
@@ -147,9 +175,9 @@ func UpdateStockAlert(c *gin.Context, r *gin.Engine, app *types.App) {
 	}
 
 	// Checking for alert data with given ID exists
-	retrieveStockAlertData, err := model.FindAlertNameByUserIDAndAlertName(app, updateAlertInput.UserID, updateAlertInput.AlertName)
+	retrieveStockAlertData, err := models.FindAlertNameByUserIDAndAlertName(app, updateAlertInput.UserID, updateAlertInput.AlertName)
 	if err != nil {
-		helpers.SendResponse(c, http.StatusInternalServerError, "Internal sever error", nil, nil, false)
+		helpers.SendResponse(c, http.StatusInternalServerError, "Internal server error", nil, nil, false)
 		return
 	}
 
@@ -163,7 +191,7 @@ func UpdateStockAlert(c *gin.Context, r *gin.Engine, app *types.App) {
 		return
 	}
 
-	err = model.UpdateStockAlertData(app, updateAlertInput)
+	err = models.UpdateStockAlertData(app, updateAlertInput)
 	if err != nil {
 		helpers.SendResponse(c, http.StatusInternalServerError, "Unable to update alert data ,Try again later", nil, nil, false)
 		return
@@ -205,9 +233,9 @@ func DeleteStockAlert(c *gin.Context, r *gin.Engine, app *types.App) {
 		return
 	}
 
-	user, err := model.FindUserByID(app, deleteStockAlert.UserID)
+	user, err := models.FindUserByID(app, deleteStockAlert.UserID)
 	if err != nil {
-		helpers.SendResponse(c, http.StatusInternalServerError, "Internal sever error", nil, nil, false)
+		helpers.SendResponse(c, http.StatusInternalServerError, "Internal server error", nil, nil, false)
 		return
 	}
 
@@ -215,9 +243,9 @@ func DeleteStockAlert(c *gin.Context, r *gin.Engine, app *types.App) {
 		helpers.SendResponse(c, http.StatusNotFound, "User not found", nil, nil, false)
 		return
 	}
-	retrieveStockAlertData, err := model.FindAlertNameByUserIDAndID(app, deleteStockAlert.UserID, deleteStockAlert.ID)
+	retrieveStockAlertData, err := models.FindAlertNameByUserIDAndID(app, deleteStockAlert.UserID, deleteStockAlert.ID)
 	if err != nil {
-		helpers.SendResponse(c, http.StatusInternalServerError, "Internal sever error", nil, nil, false)
+		helpers.SendResponse(c, http.StatusInternalServerError, "Internal server error", nil, nil, false)
 		return
 	}
 
@@ -227,7 +255,7 @@ func DeleteStockAlert(c *gin.Context, r *gin.Engine, app *types.App) {
 		return
 	}
 
-	rowsAffected, err := model.DeleteStockAlertByID(app, retrieveStockAlertData.UserID)
+	rowsAffected, err := models.DeleteStockAlertByID(app, retrieveStockAlertData.UserID)
 	if err != nil {
 		helpers.SendResponse(c, http.StatusInternalServerError, "Internal server error", nil, nil, false)
 		return
@@ -253,8 +281,9 @@ func UpdateActiveStatus(c *gin.Context, r *gin.Engine, app *types.App) {
 		return
 	}
 
-	utils.UpdateActiveStatusUtil(c,ctx,updateActiveStatus.UserID,updateActiveStatus.ID,updateActiveStatus.Active,app)
+	isSuccess := utils.UpdateActiveStatusUtil(c,ctx,updateActiveStatus.UserID,updateActiveStatus.ID,updateActiveStatus.Active,app)
 
-	helpers.SendResponse(c, http.StatusOK, "Stock alert status updated successfully", nil, nil, true)
-
+	if isSuccess {
+		helpers.SendResponse(c, http.StatusOK, "Stock alert status updated successfully", nil, nil, true)
+	}
 }

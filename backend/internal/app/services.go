@@ -27,7 +27,7 @@ func InitializeServices() (*sql.DB,*redis.Client,error) {
 	return db, redisClient, nil
 }
 
-// initializeDatabaseTables initializes required database tables (user and stock alerts)
+// InitializeDatabaseTables initializes required database tables (user and stock alerts)
 func InitializeDatabaseTables(db *sql.DB) error {
 	// Initialize user table
 	if err := models.InitUserTable(db); err != nil {
@@ -39,13 +39,22 @@ func InitializeDatabaseTables(db *sql.DB) error {
 		return fmt.Errorf("error creating stock alert table: %w", err)
 	}
 
+	// Initalize monitor stock table
+	if err := models.InitializeMonitorStockTable(db); err != nil{
+		return fmt.Errorf("error creating monitor stock table: %w",err)
+	}
+
 	return nil
 }
 
+
+// InitializeEnv initializes envs and returns error 
 func InitalizeEnv() error {
 	err := godotenv.Load(".env")
 	if err != nil{
-		return err
+		return fmt.Errorf("error initalizing env: %w",err)
 	}
 	return nil
 }
+
+

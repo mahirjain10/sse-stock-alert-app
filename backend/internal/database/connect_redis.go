@@ -10,24 +10,31 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// InitializeRedis sets up the Redis client
-func InitializeRedis() (*redis.Client,error) {
+// InitializeRedis sets up and returns a Redis client
+func InitializeRedis() (*redis.Client, error) {
+	// Load Redis connection details from environment variables
+	redisAddr := os.Getenv("REDIS_DB_URL")
+	redisPassword := os.Getenv("REDIS_DB_PASSWORD")
+
+	// Create a new Redis client
 	client := redis.NewClient(&redis.Options{
-		Addr:     os.Getenv("REDIS_DB_URL"),
-		Password: os.Getenv("REDIS_DB_PASSWORD"), 
-		DB:       0,       
+		Addr:     redisAddr,
+		Password: redisPassword, // empty password means no password
+		DB:       0,             // default DB
 	})
 
-	// Ping Redis to test connection
+	// Ping Redis to test the connection
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	_, err := client.Ping(ctx).Result()
 	if err != nil {
-		log.Fatalf("Failed to connect to Redis: %v", err)
-		return nil,fmt.Errorf("Failed to connect to Redis: %v",err)
+		// Log the error and return it
+		log.Printf("Failed to connect to Redis: %v", err)
+		return nil, fmt.Errorf("failed to connect to Redis: %w", err)
 	}
 
-	fmt.Println("Redis connection established")
-	return client,nil
+	// Log success and return the Redis client
+	log.Println("Redis connection established")
+	return client, nil
 }

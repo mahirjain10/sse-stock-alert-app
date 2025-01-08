@@ -7,11 +7,17 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// App contains the database and Redis client
 type App struct {
 	DB          *sql.DB
 	RedisClient *redis.Client
 }
 
+// -----------------------------------------
+// User Management Types
+// -----------------------------------------
+
+// RegisterUser represents a user during registration
 type RegisterUser struct {
 	ID        string    `json:"id,omitempty"` 
 	Name      string    `json:"name"`
@@ -21,6 +27,7 @@ type RegisterUser struct {
 	UpdatedAt time.Time `json:"updated_at,omitempty"`
 }
 
+// EditUser represents a user's data for editing their profile
 type EditUser struct {
 	ID          string `json:"id" binding:"required"`
 	Name        string `json:"name,omitempty"`
@@ -29,29 +36,46 @@ type EditUser struct {
 	NewPassword string `json:"new_password" binding:"required_with=OldPassword"`
 }
 
+// LoginUser represents the data required for user login
 type LoginUser struct {
 	ID       string `json:"id,omitempty"`
 	Email    string `json:"email"`
 	Password string `json:"password"`
 }
 
+// -----------------------------------------
+// Stock Monitoring Types
+// -----------------------------------------
+
+// Ticker represents a stock ticker to monitor
 type Ticker struct {
 	TickerToMonitor string `json:"ticker_to_monitor"`
 }
+
+// GetCurrentPrice represents the current price of a stock along with its fetch time
 type GetCurrentPrice struct {
 	CurrentFetchedPrice float64 `json:"current_fetched_price"`
 	CurrentFetchedTime  string  `json:"current_fetched_time"`
-	AlertID             string
+	AlertID             string  `json:"alert_id"`
 }
 
+// MonitorStockPrice represents stock monitoring data with an alert ID
 type MonitorStockPrice struct {
+	ID string 
 	Ticker
 	AlertID string `json:"alert_id"`
+	IsActive bool `json:"is_active"`
 }
+
+// -----------------------------------------
+// Stock Alert Types
+// -----------------------------------------
+
+// StockAlert represents a user's stock alert data
 type StockAlert struct {
-	UserID    string `json:"user_id"`
-	ID        string `json:"id,omitempty"`
-	AlertName string `json:"alert_name"`
+	UserID    string    `json:"user_id"`
+	ID        string    `json:"id,omitempty"`
+	AlertName string    `json:"alert_name"`
 	Ticker
 	GetCurrentPrice
 	Condition  string  `json:"alert_condition"`
@@ -61,6 +85,7 @@ type StockAlert struct {
 	UpdatedAt  time.Time
 }
 
+// UpdateStockAlert represents the fields to update an existing stock alert
 type UpdateStockAlert struct {
 	UserID     string  `json:"user_id"`
 	ID         string  `json:"id,omitempty"`
@@ -69,16 +94,24 @@ type UpdateStockAlert struct {
 	AlertPrice float64 `json:"alert_price"`
 }
 
+// UpdateActiveStatus represents the status update of a stock alert
 type UpdateActiveStatus struct {
 	UserID string `json:"user_id"`
 	ID     string `json:"id"`
 	Active bool   `json:"active"`
 }
 
+// DeleteStockAlert represents the data required to delete a stock alert
 type DeleteStockAlert struct {
 	UserID string `json:"user_id"`
 	ID     string `json:"id"`
 }
+
+// -----------------------------------------
+// Stock Data Structure for Chart Data
+// -----------------------------------------
+
+// StockData represents the response structure for fetched stock chart data
 type StockData struct {
 	Chart struct {
 		Result []struct {

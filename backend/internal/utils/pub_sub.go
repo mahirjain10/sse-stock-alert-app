@@ -3,6 +3,7 @@ package utils
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"strconv"
 	"time"
@@ -14,8 +15,9 @@ import (
 
 const (
 	socketServerURL = "ws://localhost:8080/ws/get-stock-price-socket"
-	redisChannel   = "monitor"
+	redisChannel    = "monitor"
 )
+var count int = 0;
 
 // Publish sends a message to the Redis Pub/Sub channel.
 func Publish(redisClient *redis.Client, ctx context.Context, ticker, alertID string) {
@@ -46,6 +48,7 @@ func Publish(redisClient *redis.Client, ctx context.Context, ticker, alertID str
 
 // Subscribe listens for messages on the Redis Pub/Sub channel.
 func Subscribe(redisClient *redis.Client, ctx context.Context) {
+	// ctx = context.WithValue(ctx,"count",count)
 	ist, err := time.LoadLocation("Asia/Kolkata")
 	if err != nil {
 		log.Println("Error loading IST timezone:", err)
@@ -60,7 +63,7 @@ func Subscribe(redisClient *redis.Client, ctx context.Context) {
 	var conn *websocket.Conn
 
 	// Connect to WebSocket and manage connection
-	connectWebSocket := func() error {
+	connectWebSocket := func()error {
 		var dialErr error
 		conn, _, dialErr = websocket.DefaultDialer.Dial(socketServerURL, nil)
 		if dialErr != nil {
@@ -105,25 +108,27 @@ func startWebSocketReader(conn *websocket.Conn, redisClient *redis.Client, ctx c
 			if parsedResponse.Data == nil {
 				return
 			}
-		
+
 			dataJSON, err := json.Marshal(parsedResponse.Data)
 			if err != nil {
 				log.Printf("Error marshaling response data: %v", err)
 				return
 			}
-			
+
 			var stockData types.GetCurrentPrice
 			if err := json.Unmarshal(dataJSON, &stockData); err != nil {
-			log	.Printf("Error unmarshaling stock data: %v", err)
-			return
-	}
-			go ComparePriceAndThreshold(redisClient, ctx, stockData.AlertID,int64(stockData.CurrentFetchedPrice))
+				log.Printf("Error unmarshaling stock data: %v", err)
+				return
+			}
+			fmt.Println("I am getting called in startwebsocket func")
+			go ComparePriceAndThreshold(redisClient, ctx, stockData.AlertID, int64(stockData.CurrentFetchedPrice))
 		}
 	}()
 }
 
-func ComparePriceAndThreshold(redisClient *redis.Client, ctx context.Context,alertID string,currentPrice int64) {
-	alertData, err := redisClient.HGetAll(ctx,alertID).Result()
+func ComparePriceAndThreshold(redisClient *redis.Client, ctx context.Context, alertID string, currentPrice int64) {
+	count=count+1;
+	alertData, err := redisClient.HGetAll(ctx, alertID).Result()
 	if err != nil {
 		log.Printf("Error retrieving alert data from Redis: %v", err)
 		return
@@ -134,15 +139,28 @@ func ComparePriceAndThreshold(redisClient *redis.Client, ctx context.Context,ale
 		log.Printf("Error parsing alert price: %v", err)
 		return
 	}
-
+	fmt.Println(count)
+	if count == 10 {
+		currentPrice = alertPrice
+		fmt.Println("current price := ",currentPrice)
+	}
 	isConditionMet, err := CompareUsingSymbol(alertData["alert_condition"], currentPrice, alertPrice)
 	if err != nil {
 		log.Printf("Error evaluating alert condition: %v", err)
 		return
 	}
-
+	responseData := types.UpdateActiveStatus{
+		UserID: alertData["user_id"],
+		ID:     alertData["alert_id"],
+		Active: false,
+	}
 	if isConditionMet {
 		log.Printf("Alert condition met for alert ID: %s\n", alertID)
+		err := PublishToPubSub(redisClient, ctx, "alert-topic", responseData)
+		fmt.Println("calling pub sub ")
+		if err != nil {
+			log.Printf("Error publishing to Pub/Sub: %v", err)
+		}
 	} else {
 		log.Printf("Alert condition not met for alert ID: %s\n", alertID)
 	}

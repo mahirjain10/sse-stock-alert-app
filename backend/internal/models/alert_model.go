@@ -7,26 +7,28 @@ import (
 	"github.com/mahirjain_10/stock-alert-app/backend/internal/types"
 )
 
-func FindAlertNameByUserIDAndAlertName(app *types.App, userID string, alertName string) (types.StockAlert, error) {
+// FindAlertNameByUserIDAndAlertName retrieves a stock alert by user ID and alert name.
+func FindAlertNameByUserIDAndAlertName(app *types.App, userID, alertName string) (types.StockAlert, error) {
 	var stockAlert types.StockAlert
-	var err error
-	// This is to check if alert_name is unique on account level
-	stmt := `SELECT 
-    id,
-    user_id,
-    ticker,
-    alert_name,
-    current_fetched_price,
-    current_fetched_time,
-    alert_condition,
-    alert_price,
-    is_active,
-    created_on,
-    updated_on
-	FROM stock_alert
-	WHERE user_id = ? AND alert_name = ?;`
 
-	err = app.DB.QueryRow(stmt, userID, alertName).Scan(
+	stmt := `
+	SELECT 
+		id,
+		user_id,
+		ticker,
+		alert_name,
+		current_fetched_price,
+		current_fetched_time,
+		alert_condition,
+		alert_price,
+		is_active,
+		created_on,
+		updated_on
+	FROM stock_alert
+	WHERE user_id = ? AND alert_name = ?;
+	`
+
+	err := app.DB.QueryRow(stmt, userID, alertName).Scan(
 		&stockAlert.ID,
 		&stockAlert.UserID,
 		&stockAlert.Ticker.TickerToMonitor,
@@ -39,41 +41,40 @@ func FindAlertNameByUserIDAndAlertName(app *types.App, userID string, alertName 
 		&stockAlert.CreatedAt,
 		&stockAlert.UpdatedAt,
 	)
+
 	if err != nil {
 		if err == sql.ErrNoRows {
-			// If no alert found with given alert name found
-			return types.StockAlert{}, nil
+			return types.StockAlert{}, nil // Return empty if no rows found
 		}
-		// Other errors
 		fmt.Printf("Error while fetching data: %v\n", err)
 		return types.StockAlert{}, err
 	}
+
 	return stockAlert, nil
 }
 
-func FindAlertNameByUserIDAndID(app *types.App, userID string, ID string) (types.StockAlert, error) {
+// FindAlertNameByUserIDAndID retrieves a stock alert by user ID and alert ID.
+func FindAlertNameByUserIDAndID(app *types.App, userID, alertID string) (types.StockAlert, error) {
 	var stockAlert types.StockAlert
-	var err error
 
-	// This is to check if alert_name is not present other than
-	// current alert's ID in a particular user account to avoid duplication
-	// on account level while updating the alert data
-	stmt := `SELECT 
-    id,
-    user_id,
-    ticker,
-    alert_name,
-    current_fetched_price,
-    current_fetched_time,
-    alert_condition,
-    alert_price,
-    is_active,
-    created_on,
-    updated_on
+	stmt := `
+	SELECT 
+		id,
+		user_id,
+		ticker,
+		alert_name,
+		current_fetched_price,
+		current_fetched_time,
+		alert_condition,
+		alert_price,
+		is_active,
+		created_on,
+		updated_on
 	FROM stock_alert
 	WHERE user_id = ? AND id = ?;
 	`
-	err = app.DB.QueryRow(stmt, userID, ID).Scan(
+
+	err := app.DB.QueryRow(stmt, userID, alertID).Scan(
 		&stockAlert.ID,
 		&stockAlert.UserID,
 		&stockAlert.Ticker.TickerToMonitor,
@@ -89,32 +90,33 @@ func FindAlertNameByUserIDAndID(app *types.App, userID string, ID string) (types
 
 	if err != nil {
 		if err == sql.ErrNoRows {
-			// If no alert found with given alert name found
-			return types.StockAlert{}, nil
+			return types.StockAlert{}, nil // Return empty if no rows found
 		}
-		// Other errors
 		fmt.Printf("Error while fetching data: %v\n", err)
 		return types.StockAlert{}, err
 	}
+
 	return stockAlert, nil
 }
 
+// InsertStockAlertData inserts a new stock alert record into the database.
 func InsertStockAlertData(app *types.App, stockAlertData types.StockAlert) error {
-	// SQL query to insert stock alert data
 	query := `
-    INSERT INTO stock_alert (user_id, id, alert_name, ticker, current_fetched_price,current_fetched_time, alert_condition, alert_price)
-    VALUES (?, ?, ?, ?, ?, ?, ?,?)
-    `
+	INSERT INTO stock_alert (
+		user_id, id, alert_name, ticker, 
+		current_fetched_price, current_fetched_time, 
+		alert_condition, alert_price
+	)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`
 
-	// Prepare the statement
 	stmt, err := app.DB.Prepare(query)
 	if err != nil {
-		fmt.Printf("error preparing statement: %v\n", err)
+		fmt.Printf("Error preparing statement: %v\n", err)
 		return fmt.Errorf("failed to prepare statement: %w", err)
 	}
-	defer stmt.Close() // Ensure the statement is closed after use
+	defer stmt.Close()
 
-	// Execute the prepared statement with stock alert data
 	_, err = stmt.Exec(
 		stockAlertData.UserID,
 		stockAlertData.ID,
@@ -125,31 +127,30 @@ func InsertStockAlertData(app *types.App, stockAlertData types.StockAlert) error
 		stockAlertData.Condition,
 		stockAlertData.AlertPrice,
 	)
+
 	if err != nil {
-		fmt.Printf("error executing stock alert insert: %v\n", err)
+		fmt.Printf("Error executing insert: %v\n", err)
 		return fmt.Errorf("failed to insert stock alert data: %w", err)
 	}
 
-	return nil // Return nil if operation was successful
+	return nil
 }
 
+// UpdateStockAlertData updates an existing stock alert record in the database.
 func UpdateStockAlertData(app *types.App, updateData types.UpdateStockAlert) error {
-	// SQL query to update stock alert data
 	query := `
-		UPDATE stock_alert
-		SET alert_name = ?, 
-			alert_condition = ?, 
-			alert_price = ?
-		WHERE user_id = ? AND id = ?
+	UPDATE stock_alert
+	SET alert_name = ?, alert_condition = ?, alert_price = ?
+	WHERE user_id = ? AND id = ?
 	`
-	// Prepare the statement
+
 	stmt, err := app.DB.Prepare(query)
 	if err != nil {
-		fmt.Printf("error preparing statement: %v\n", err)
+		fmt.Printf("Error preparing statement: %v\n", err)
 		return fmt.Errorf("failed to prepare statement: %w", err)
 	}
-	defer stmt.Close() // Ensure the statement is closed after use
-	// Execute the prepared statement with stock alert data
+	defer stmt.Close()
+
 	_, err = stmt.Exec(
 		updateData.AlertName,
 		updateData.Condition,
@@ -157,71 +158,88 @@ func UpdateStockAlertData(app *types.App, updateData types.UpdateStockAlert) err
 		updateData.UserID,
 		updateData.ID,
 	)
+
 	if err != nil {
-		fmt.Printf("failed to update stock alert data: %v\n", err)
+		fmt.Printf("Error executing update: %v\n", err)
 		return fmt.Errorf("failed to update stock alert data: %w", err)
 	}
 
-	return nil // Return nil if operation was successful
+	return nil
 }
 
-func DeleteStockAlertByID(app *types.App, ID string) (int64, error) {
-	// Start a new transaction
+// DeleteStockAlertByID deletes a stock alert by its ID.
+func DeleteStockAlertByID(app *types.App, alertID string) (int64, error) {
 	tx, err := app.DB.Begin()
 	if err != nil {
-		fmt.Printf("failed to begin transaction: %v", err)
 		return 0, fmt.Errorf("failed to begin transaction: %w", err)
 	}
 
-	// Prepare the DELETE query
-	query := `DELETE FROM stock_alert WHERE id=?`
-	result, err := tx.Exec(query, ID)
+	query := `DELETE FROM stock_alert WHERE id = ?`
+	result, err := tx.Exec(query, alertID)
 	if err != nil {
-		tx.Rollback() // Roll back the transaction if an error occurs
-		fmt.Printf("failed to delete stock alert data: %v", err)
+		tx.Rollback()
 		return 0, fmt.Errorf("failed to delete stock alert data: %w", err)
 	}
 
-	// Get the number of rows affected
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
 		tx.Rollback()
-		fmt.Printf("failed to retrieve affected rows: %v", err)
 		return 0, fmt.Errorf("failed to retrieve affected rows: %w", err)
 	}
 
-	// Commit the transaction
 	if err := tx.Commit(); err != nil {
-		fmt.Printf("failed to commit transaction: %v", err)
 		return 0, fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
-	fmt.Printf("Rows affected: %d\n", rowsAffected)
 	return rowsAffected, nil
 }
 
-func UpdateActiveStatusByID(app *types.App, status bool, ID string) error {
+// UpdateActiveStatusByID updates the 'is_active' status of a stock alert by ID.
+func UpdateActiveStatusByID(app *types.App, status bool, alertID string) error {
 	query := `
-		UPDATE stock_alert
-		SET is_active = ?
-		WHERE id = ?
+	UPDATE stock_alert
+	SET is_active = ?
+	WHERE id = ?
 	`
-	// Prepare the statement
+
 	stmt, err := app.DB.Prepare(query)
 	if err != nil {
-		fmt.Printf("error preparing statement: %v\n", err)
+		fmt.Printf("Error preparing statement: %v\n", err)
 		return fmt.Errorf("failed to prepare statement: %w", err)
 	}
-	defer stmt.Close() // Ensure the statement is closed after use
-	// Execute the prepared statement with stock alert data
-	_, err = stmt.Exec(
-		status,
-		ID,
-	)
+	defer stmt.Close()
+
+	_, err = stmt.Exec(status, alertID)
 	if err != nil {
-		fmt.Printf("failed to update stock alert status: %v\n", err)
+		fmt.Printf("Error executing update: %v\n", err)
 		return fmt.Errorf("failed to update stock alert status: %w", err)
 	}
 
-	return nil // Return nil if operation was successful
+	return nil
+}
+
+func InsertMonitorStockData(app *types.App, MSP types.MonitorStockPrice) error {
+	query:=`
+		INSERT INTO monitor_stock(
+			id, alert_id, ticker, is_active
+		)
+		VALUES (?, ?, ?, ?) 
+	`
+	stmt, err := app.DB.Prepare(query)
+	if err != nil {
+		fmt.Printf("Error preparing statement: %v\n", err)
+		return fmt.Errorf("failed to prepare statement: %w", err)
+	}
+	defer stmt.Close()
+	_,err = stmt.Exec(
+		MSP.ID,
+		MSP.AlertID,
+		MSP.TickerToMonitor,
+		MSP.IsActive,
+	)
+	if err != nil {
+		fmt.Printf("Error executing insert: %v\n", err)
+		return fmt.Errorf("failed to insert monitor stock data: %w", err)
+	}
+	return nil
 }

@@ -7,72 +7,78 @@ import (
 	"github.com/mahirjain_10/stock-alert-app/backend/internal/types"
 )
 
-func FindUserByID(app *types.App, user_id string)(types.RegisterUser, error){
+// Helper function to handle query execution and error handling
+// Using vardic parameters to accept any type of parameter
+func executeQueryRow(app *types.App, stmt string, args ...interface{}) (*sql.Row, error) {
+	row := app.DB.QueryRow(stmt, args...)
+
+	if err := row.Err(); err != nil {
+		return nil, fmt.Errorf("query row execution error: %w", err)
+	}
+	return row, nil
+}
+
+// Helper function to scan a user into the struct
+func scanUser(row *sql.Row) (types.RegisterUser, error) {
+	var user types.RegisterUser
+	if err := row.Scan(&user.ID, &user.Name, &user.Email, &user.Password, &user.CreatedAt, &user.UpdatedAt); err != nil {
+		return types.RegisterUser{}, fmt.Errorf("scanning user data failed: %w", err)
+	}
+	return user, nil
+}
+
+// FindUserByID retrieves a user by their unique ID
+func FindUserByID(app *types.App, userID string) (types.RegisterUser, error) {
 	stmt := `SELECT * FROM user WHERE id = ?`
 
-	var user types.RegisterUser
-
-	err := app.DB.QueryRow(stmt, user_id).Scan(&user.ID, &user.Name, &user.Email, &user.Password,&user.CreatedAt,&user.UpdatedAt) // assuming the columns you are selecting
+	row, err := executeQueryRow(app, stmt, userID)
 	if err != nil {
-        if err == sql.ErrNoRows {
-            // No user found with the given email
-            return types.RegisterUser{}, nil
-        }
-        // Other errors
-        fmt.Printf("Error while fetching data: %v\n", err)
-        return types.RegisterUser{}, err
-    }
+		return types.RegisterUser{}, err
+	}
 
-    return user, nil
+	user, err := scanUser(row)
+	if err != nil {
+		return types.RegisterUser{}, err
+	}
+
+	return user, nil
 }
 
+// FindUserByEmail retrieves a user by their email
 func FindUserByEmail(app *types.App, email string) (types.RegisterUser, error) {
-    stmt := `SELECT * FROM user WHERE email = ?`
+	stmt := `SELECT * FROM user WHERE email = ?`
 
-    var user types.RegisterUser
+	row, err := executeQueryRow(app, stmt, email)
+	if err != nil {
+		return types.RegisterUser{}, err
+	}
 
-    // Use QueryRow() to execute the SELECT statement and get a single row
-    err := app.DB.QueryRow(stmt, email).Scan(&user.ID, &user.Name, &user.Email, &user.Password,&user.CreatedAt,&user.UpdatedAt) // assuming the columns you are selecting
-    if err != nil {
-        if err == sql.ErrNoRows {
-            // No user found with the given email
-            return types.RegisterUser{}, nil
-        }
-        // Other errors
-        fmt.Printf("Error while fetching data: %v\n", err)
-        return types.RegisterUser{}, err
-    }
+	user, err := scanUser(row)
+	if err != nil {
+		return types.RegisterUser{}, err
+	}
 
-    return user, nil
+	return user, nil
 }
 
+// InsertUser adds a new user to the database
 func InsertUser(app *types.App, user types.RegisterUser) error {
-	// SQL query to insert a new user
 	query := `
 		INSERT INTO user(id, name, email, password) 
 		VALUES(?, ?, ?, ?)
 	`
 
-	// Prepare the statement
+	// Prepare the SQL statement
 	stmt, err := app.DB.Prepare(query)
 	if err != nil {
-		// Log and return error if statement preparation fails
-		fmt.Printf("error preparing statement: %v\n", err)
-		return fmt.Errorf("failed to prepare statement: %w", err)
+		return fmt.Errorf("error preparing statement: %w", err)
 	}
-
-	// Ensure the statement is closed after execution
 	defer stmt.Close()
 
-	// Execute the prepared statement with user data
-	_, err = stmt.Exec(user.ID, user.Name, user.Email, user.Password)
-	if err != nil {
-		// Log and return error if execution fails
-		fmt.Printf("error while inserting user data: %v\n", err)
-		return fmt.Errorf("failed to insert user: %w", err)
+	// Execute the statement with user data
+	if _, err := stmt.Exec(user.ID, user.Name, user.Email, user.Password); err != nil {
+		return fmt.Errorf("error executing insert statement: %w", err)
 	}
 
-	// Return nil if the operation was successful
 	return nil
 }
-
