@@ -16,6 +16,7 @@ import (
 	"github.com/mahirjain_10/stock-alert-app/backend/internal/utils"
 )
 
+
 func GetCurrentStockPriceAndTime(c *gin.Context, r *gin.Engine, app *types.App) {
 	// var stock types.GetCurrentPrice
 	var TTM types.Ticker
@@ -28,12 +29,17 @@ func GetCurrentStockPriceAndTime(c *gin.Context, r *gin.Engine, app *types.App) 
 	if err != nil {
 		if err.Error() == "failed to fetch stock price, try again" {
 			helpers.SendResponse(c, http.StatusInternalServerError, "Failed to fetch stock price,try again", nil, nil, false)
+			return
 		}
 		if err.Error() == "failed to decode response json" {
 			c.JSON(http.StatusBadRequest, gin.H{"statusCode": http.StatusBadRequest, "message": "failed to decode response json", "error": err.Error()})
+			return
+
 		}
 		if err.Error() == "no data found" {
 			c.JSON(http.StatusNotFound, gin.H{"statusCode": http.StatusNotFound, "message": "no data found", "error": nil})
+			return
+
 		}
 	}
 	// Prepare response

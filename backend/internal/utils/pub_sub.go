@@ -86,6 +86,7 @@ func Subscribe(redisClient *redis.Client, ctx context.Context) {
 	processRedisMessages(pubsub, conn, connectWebSocket, ctx, ist)
 }
 
+// READ MESSAGE AND MONITORS THE PRICES USING FUNC
 func startWebSocketReader(conn *websocket.Conn, redisClient *redis.Client, ctx context.Context, ist *time.Location) {
 	// ctxWithTimeOut,cancel() := context.WithCancel(ctx)
 
@@ -166,6 +167,7 @@ func ComparePriceAndThreshold(redisClient *redis.Client, ctx context.Context, al
 	}
 }
 
+// PROCESSES THE INCOMING MESSAGE FROM PUBLISH AND SENDS THE MESSAGE TO WEBSOCKET
 func processRedisMessages(pubsub *redis.PubSub, conn *websocket.Conn, reconnectFunc func() error, ctx context.Context, ist *time.Location) {
 	for {
 		msg, err := pubsub.ReceiveMessage(ctx)

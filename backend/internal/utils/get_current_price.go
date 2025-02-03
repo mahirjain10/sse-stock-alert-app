@@ -14,6 +14,8 @@ import (
 func GetCurrentStockPriceAndTime(TTM types.Ticker,stockData types.StockData) (float64,string,error) {
 	// Fetch stock data from external API
 	res, err := http.Get( os.Getenv("STOCK_API_URL")+ TTM.TickerToMonitor + "?range=1d&interval=1m")
+	fmt.Println(err)
+	fmt.Println(res.Body)
 	if err != nil {
 		// helpers.SendResponse(c, http.StatusInternalServerError, "Failed to fetch stock price,try again", nil, nil, false)
 		return 0,"",fmt.Errorf("failed to fetch stock price, try again")

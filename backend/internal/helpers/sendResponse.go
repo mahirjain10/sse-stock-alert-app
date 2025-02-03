@@ -3,6 +3,7 @@ package helpers
 import (
 	"github.com/gin-gonic/gin"
 	"github.com/mahirjain_10/stock-alert-app/backend/internal/types"
+	// "github.com/mahirjain_10/stock-alert-app/backend/internal/types"
 )
 
 // SendResponse sends a standardized JSON response with the given status code, message, data, and error details

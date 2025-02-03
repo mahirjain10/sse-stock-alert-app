@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/mahirjain_10/stock-alert-app/backend/internal/types"
+	// "github.com/mahirjain_10/stock-alert-app/backend/internal/types"
 )
 
 // FindAlertNameByUserIDAndAlertName retrieves a stock alert by user ID and alert name.
@@ -240,6 +241,30 @@ func InsertMonitorStockData(app *types.App, MSP types.MonitorStockPrice) error {
 	if err != nil {
 		fmt.Printf("Error executing insert: %v\n", err)
 		return fmt.Errorf("failed to insert monitor stock data: %w", err)
+	}
+	return nil
+}
+
+
+func ChangeStockMonitoringStatus(app *types.App, isActive bool, id string) error {
+	query:=`
+		UPDATE monitor_stock 
+		SET = is_active=?
+		WHERE id = ?
+	`	
+	stmt, err := app.DB.Prepare(query)
+	if err != nil {
+		fmt.Printf("Error preparing statement: %v\n", err)
+		return fmt.Errorf("failed to prepare statement: %w", err)
+	}
+	defer stmt.Close()
+	_,err = stmt.Exec(
+		isActive,
+		id,
+	)
+	if err != nil {
+		fmt.Printf("Error executing update: %v\n", err)
+		return fmt.Errorf("failed to update monitor stock data: %w", err)
 	}
 	return nil
 }

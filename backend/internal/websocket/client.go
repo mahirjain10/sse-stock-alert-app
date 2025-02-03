@@ -3,13 +3,15 @@ package websocket
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
+	"runtime"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
+
+	// "github.com/mahirjain_10/stock-alert-app/backend/internal/types"
 	"github.com/mahirjain_10/stock-alert-app/backend/internal/types"
 	"github.com/mahirjain_10/stock-alert-app/backend/internal/utils"
 )
@@ -38,15 +40,12 @@ type Client struct {
 	done chan struct{}   // Channel for signaling that the client is done (for graceful shutdown)
 }
 
-
-
 func (c *Client) ReadPump(ctx *gin.Context) {
 	defer func() {
 		c.hub.unregister <- c
 		c.conn.Close()
 		close(c.done)
 	}()
-
 
 	c.conn.SetReadLimit(maxMessageSize)
 	c.conn.SetReadDeadline(time.Now().Add(pongWait))
@@ -73,25 +72,31 @@ func (c *Client) ReadPump(ctx *gin.Context) {
 			continue
 		}
 
-		c.hub.clientMap[monitoringData.AlertID] = c
+		// Register the client to clientsMap
+		c.hub.mu.Lock()
+		c.hub.clientsMap[monitoringData.AlertID] = c
 
-		// Add the client to the tickerMap
-		if _, exists := c.hub.tickerMap[monitoringData.TickerToMonitor]; !exists {
-			c.hub.tickerMap[monitoringData.TickerToMonitor] = []*Client{}
-		}
-		c.hub.tickerMap[monitoringData.TickerToMonitor] = append(c.hub.tickerMap[monitoringData.TickerToMonitor], c)
-
-		// If no active monitoring for the ticker, start it
-		if !c.hub.activeMonitor[monitoringData.TickerToMonitor] {
-			c.hub.activeMonitor[monitoringData.TickerToMonitor] = true
-			fmt.Println("started monitoring here")
+		// Add the client to activeTickersMap (allow multiple clients for each ticker)
+		if _, exists := c.hub.activeTickersMap[monitoringData.TickerToMonitor]; !exists {
+			c.hub.activeTickersMap[monitoringData.TickerToMonitor] = []*Client{c} // Start new list with current client
 			// Start monitoring in a separate goroutine
-			go c.monitorStockPrice(monitoringData, monitoringData.AlertID,monitorCtx)
+			log.Println("Before starting goroutine, Total Goroutines:", runtime.NumGoroutine())
+
+			go func() {
+				log.Println("Goroutine started for AlertID:", monitoringData.AlertID)
+				c.monitorStockPrice(monitoringData, monitoringData.AlertID, monitorCtx)
+				log.Println("Goroutine exited for AlertID:", monitoringData.AlertID)
+			}()
+
+		} else {
+			c.hub.activeTickersMap[monitoringData.TickerToMonitor] = append(c.hub.activeTickersMap[monitoringData.TickerToMonitor], c)
 		}
+		log.Println("After starting goroutine, Total Goroutines:", runtime.NumGoroutine())
+		c.hub.mu.Unlock()
 	}
 }
 
-func (c *Client) monitorStockPrice(TTM types.MonitorStockPrice,alertID string, monitorCtx context.Context) {
+func (c *Client) monitorStockPrice(monitoringData types.MonitorStockPrice, alertID string, monitorCtx context.Context) {
 	var stockData types.StockData
 	tickerChan := time.NewTicker(2 * time.Second)
 	defer tickerChan.Stop()
@@ -101,43 +106,51 @@ func (c *Client) monitorStockPrice(TTM types.MonitorStockPrice,alertID string, m
 		case <-monitorCtx.Done():
 			// Stop monitoring if no longer needed
 			c.hub.mu.Lock()
-			delete(c.hub.activeMonitor, TTM.TickerToMonitor)
+			clients := c.hub.activeTickersMap[monitoringData.TickerToMonitor]
+			for i, client := range clients {
+				if client == c {
+					c.hub.activeTickersMap[monitoringData.TickerToMonitor] = append(clients[:i], clients[i+1:]...)
+					break
+				}
+			}
 			c.hub.mu.Unlock()
 			return
 		case <-tickerChan.C:
 			// Fetch the latest stock price
-			currentPrice, currentTime, err := utils.GetCurrentStockPriceAndTime(TTM.Ticker, stockData)
+			currentPrice, currentTime, err := utils.GetCurrentStockPriceAndTime(monitoringData.Ticker, stockData)
 			if err != nil {
 				log.Printf("Error fetching stock price: %v", err)
 				continue
 			}
 
-			// Send stock price updates to all clients monitoring the ticker
+			// Prepare the response
 			response := map[string]interface{}{
 				"statusCode": http.StatusOK,
 				"message":    "Latest price fetched successfully",
 				"data": types.GetCurrentPrice{
 					CurrentFetchedPrice: currentPrice,
 					CurrentFetchedTime:  currentTime,
-					AlertID:alertID ,
+					AlertID:             alertID,
 				},
 				"error": nil,
 			}
 
+			// Send stock price updates to all clients monitoring the ticker
 			responseJSON, err := json.Marshal(response)
 			if err != nil {
 				log.Printf("Error marshaling response: %v", err)
 				continue
 			}
 
-			// Send to all clients subscribed to this ticker
-			for _, client := range c.hub.tickerMap[TTM.TickerToMonitor] {
+			c.hub.mu.RLock()
+			for _, client := range c.hub.activeTickersMap[monitoringData.TickerToMonitor] {
 				select {
 				case client.send <- responseJSON:
 				case <-time.After(writeWait):
-					log.Printf("Failed to send message: timeout")
+					log.Printf("Failed to send message to client: timeout")
 				}
 			}
+			c.hub.mu.RUnlock()
 		}
 	}
 }
@@ -173,6 +186,11 @@ func (c *Client) WritePump() {
 		}
 	}
 }
+
+// UnregisterClientByAlertID will be used to remove a client based on its alert ID
+// func (h *Hub) UnregisterClientByAlertID(alertID string) {
+// Close the WebSocket connection
+// }
 
 func ServeWs(c *gin.Context, hub *Hub, w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)

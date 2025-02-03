@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 	"log"
+	"net/http"
+	_ "net/http/pprof" // Import pprof for profiling
 
 	"github.com/gin-gonic/gin"
 	"github.com/mahirjain_10/stock-alert-app/backend/internal/app"
@@ -13,13 +15,22 @@ import (
 )
 
 func main() {
+	// Start pprof server in a separate goroutine
+	go func() {
+		log.Println("Starting pprof server on :6060")
+		if err := http.ListenAndServe("localhost:6060", nil); err != nil {
+			log.Fatalf("pprof server failed: %v", err)
+		}
+	}()
+
 	// Initialize Gin router
 	r := gin.Default()
 	err := app.InitalizeEnv()
-	if err != nil{
+	if err != nil {
 		log.Fatalf("Error loading .env file: %s", err)
 		return
 	}
+
 	ctx := context.Background()
 	// Initialize the database and Redis client using the new helper function
 	db, redisClient, err := app.InitializeServices()
@@ -28,10 +39,12 @@ func main() {
 		return
 	}
 	defer db.Close()
+
 	var appInstance = types.App{
 		DB:          db,
 		RedisClient: redisClient,
 	}
+
 	// Initialize database tables
 	if err := app.InitializeDatabaseTables(db); err != nil {
 		log.Fatalf("Error initializing database tables: %v", err)
@@ -39,14 +52,15 @@ func main() {
 	}
 
 	hub := websocket.NewHub()
-
 	go hub.Run()
+
 	// Register routes
 	go func() {
 		log.Println("Starting Redis subscription...")
 		utils.Subscribe(appInstance.RedisClient, ctx)
-		utils.SubscribeToPubSub(appInstance.RedisClient,ctx,"alert-topic")
+		utils.SubscribeToPubSub(appInstance.RedisClient, ctx, "alert-topic")
 	}()
+
 	router.RegisterRoutes(r, hub, &appInstance)
 	log.Fatal(r.Run(":8080"))
 }

@@ -46,20 +46,31 @@ func FindUserByID(app *types.App, userID string) (types.RegisterUser, error) {
 
 // FindUserByEmail retrieves a user by their email
 func FindUserByEmail(app *types.App, email string) (types.RegisterUser, error) {
-	stmt := `SELECT * FROM user WHERE email = ?`
+    stmt := `SELECT * FROM user WHERE email = ?`
+    
+    row, err := executeQueryRow(app, stmt, email)
+    if err != nil {
+        // Handle potential errors from executing the query
+        return types.RegisterUser{}, fmt.Errorf("error executing query: %w", err)
+    }
 
-	row, err := executeQueryRow(app, stmt, email)
-	if err != nil {
-		return types.RegisterUser{}, err
-	}
+    // Check if any row was returned
+	// fmt.Println("row ",row.Err())
 
-	user, err := scanUser(row)
-	if err != nil {
-		return types.RegisterUser{}, err
-	}
+    if row.Err() == nil {
+		fmt.Println("59")
+        return types.RegisterUser{}, sql.ErrNoRows // Return no rows error if no user is found
+    }
 
-	return user, nil
+    user, err := scanUser(row)
+    if err != nil {
+        // Handle potential errors from scanning the row
+        return types.RegisterUser{}, fmt.Errorf("error scanning user: %w", err)
+    }
+
+    return user, nil
 }
+
 
 // InsertUser adds a new user to the database
 func InsertUser(app *types.App, user types.RegisterUser) error {

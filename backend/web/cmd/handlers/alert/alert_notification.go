@@ -14,18 +14,23 @@ func SendAlertNotification(c *gin.Context, r *gin.Engine, app *types.App) {
 	ctx := context.Background()
 	
 	var UpdateActiveStatus types.UpdateActiveStatus
-	if !helpers.BindAndValidateJSON(c,UpdateActiveStatus) {
+	if !helpers.BindAndValidateJSON(c, &UpdateActiveStatus) {
 		return
 	}
 	
-	utils.UpdateActiveStatusUtil(c,ctx,UpdateActiveStatus.UserID,UpdateActiveStatus.ID,UpdateActiveStatus.Active,app)
+	// Unregister the WebSocket client before updating the status
+	// if hub := app.Hub; hub != nil {
+	// 	hub.UnregisterClientByAlertID(UpdateActiveStatus.ID)
+	// }
 	
-	data  := make(map[string]interface{})
-
-    // Add entries to the map
-    data["user_id"] = UpdateActiveStatus.UserID
-    data["alert_id"] = UpdateActiveStatus.ID
-	helpers.SendResponse(c,http.StatusOK,"Alert condition met",data,nil,true)
+	utils.UpdateActiveStatusUtil(c, ctx, UpdateActiveStatus.UserID, UpdateActiveStatus.ID, UpdateActiveStatus.Active, app)
+	
+	data := map[string]interface{}{
+		"user_id": UpdateActiveStatus.UserID,
+		"alert_id": UpdateActiveStatus.ID,
+	}
+	
+	helpers.SendResponse(c, http.StatusOK, "Alert condition met", data, nil, true)
 }
 
 

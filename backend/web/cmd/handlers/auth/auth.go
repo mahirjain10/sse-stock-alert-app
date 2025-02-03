@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"database/sql"
 	"fmt"
 	"net/http"
 	"strings"
@@ -93,6 +94,11 @@ func LoginUser(c *gin.Context, r *gin.Engine, app *types.App) {
     // Find user with the help of Email
     retrievedUser, err := model.FindUserByEmail(app, user.Email)
 	if err != nil {
+		fmt.Println(err)
+		if err == sql.ErrNoRows {
+			helpers.SendResponse(c, http.StatusNotFound, "User with given email not found , Please create a new account", nil, nil, false)
+			return
+		}
 		helpers.SendResponse(c, http.StatusInternalServerError, "Error while checking user existence", nil, nil, false)
 		return
 	}

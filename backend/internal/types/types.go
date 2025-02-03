@@ -4,6 +4,11 @@ import (
 	"database/sql"
 	"time"
 
+	// "github.com/mahirjain_10/stock-alert-app/backend/internal/websocket"
+
+	// "github.com/mahirjain_10/stock-alert-app/backend/internal/websocket"
+
+	// "github.com/mahirjain_10/stock-alert-app/backend/internal/websocket"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -11,6 +16,7 @@ import (
 type App struct {
 	DB          *sql.DB
 	RedisClient *redis.Client
+	// Hub *websocket.Hub
 }
 
 // -----------------------------------------
