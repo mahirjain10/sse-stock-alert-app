@@ -3,9 +3,9 @@ package websocket
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
-	"runtime"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -43,8 +43,20 @@ type Client struct {
 func (c *Client) ReadPump(ctx *gin.Context) {
 	defer func() {
 		c.hub.unregister <- c
-		c.conn.Close()
-		close(c.done)
+
+		c.hub.mu.Lock()
+		if c.conn != nil {
+			c.conn.Close()
+			c.conn = nil // Prevent double-closing
+		}
+		c.hub.mu.Unlock()
+
+		// Ensure 'done' is closed only once
+		select {
+		case <-c.done:
+		default:
+			close(c.done)
+		}
 	}()
 
 	c.conn.SetReadLimit(maxMessageSize)
@@ -54,77 +66,91 @@ func (c *Client) ReadPump(ctx *gin.Context) {
 		return nil
 	})
 
+	fmt.Printf("printing client map at 68 : %v\n", c.hub.clientsMap)
+
 	monitorCtx, cancelMonitor := context.WithCancel(context.Background())
-	defer cancelMonitor()
+	fmt.Println("printing at 72")
+	defer cancelMonitor() // Ensure cancel is called when the function exits
 
 	for {
-		_, message, err := c.conn.ReadMessage()
-		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				log.Printf("error: %v", err)
+		select {
+		case <-c.done: // If client.done is closed, exit loop
+			log.Println("Client disconnected, exiting ReadPump")
+			return
+		default:
+			fmt.Println("printing at 81")
+			_, message, err := c.conn.ReadMessage()
+			fmt.Println("printing at 83")
+			fmt.Println(message)
+			if err != nil {
+				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
+					log.Printf("WebSocket read error: %v", err)
+				} else if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+					log.Println("WebSocket connection closed normally")
+				} else {
+					log.Println("WebSocket connection closed unexpectedly")
+				}
+				return
 			}
-			break
+			fmt.Println("printing at 96")
+			var monitoringData types.MonitorStockPrice
+			if err := json.Unmarshal(message, &monitoringData); err != nil {
+				log.Printf("Invalid message: %v", err)
+				continue
+			}
+
+			c.hub.mu.Lock()
+			c.hub.clientsMap[monitoringData.AlertID] = c
+			fmt.Println(c.hub.clientsMap)
+
+			if _, exists := c.hub.activeTickersMap[monitoringData.TickerToMonitor]; !exists {
+				c.hub.activeTickersMap[monitoringData.TickerToMonitor] = []*Client{c}
+				c.hub.activeCtxMap[monitoringData.AlertID] = cancelMonitor
+
+				go func() {
+					c.monitorStockPrice(monitoringData, monitoringData.AlertID, monitorCtx)
+				}()
+			} else {
+				c.hub.activeTickersMap[monitoringData.TickerToMonitor] = append(c.hub.activeTickersMap[monitoringData.TickerToMonitor], c)
+				c.hub.activeCtxMap[monitoringData.AlertID] = cancelMonitor
+			}
+			c.hub.mu.Unlock()
 		}
-
-		var monitoringData types.MonitorStockPrice
-		if err := json.Unmarshal(message, &monitoringData); err != nil {
-			log.Printf("Invalid message: %v", err)
-			continue
-		}
-
-		// Register the client to clientsMap
-		c.hub.mu.Lock()
-		c.hub.clientsMap[monitoringData.AlertID] = c
-
-		// Add the client to activeTickersMap (allow multiple clients for each ticker)
-		if _, exists := c.hub.activeTickersMap[monitoringData.TickerToMonitor]; !exists {
-			c.hub.activeTickersMap[monitoringData.TickerToMonitor] = []*Client{c} // Start new list with current client
-			// Start monitoring in a separate goroutine
-			log.Println("Before starting goroutine, Total Goroutines:", runtime.NumGoroutine())
-
-			go func() {
-				log.Println("Goroutine started for AlertID:", monitoringData.AlertID)
-				c.monitorStockPrice(monitoringData, monitoringData.AlertID, monitorCtx)
-				log.Println("Goroutine exited for AlertID:", monitoringData.AlertID)
-			}()
-
-		} else {
-			c.hub.activeTickersMap[monitoringData.TickerToMonitor] = append(c.hub.activeTickersMap[monitoringData.TickerToMonitor], c)
-		}
-		log.Println("After starting goroutine, Total Goroutines:", runtime.NumGoroutine())
-		c.hub.mu.Unlock()
 	}
 }
 
 func (c *Client) monitorStockPrice(monitoringData types.MonitorStockPrice, alertID string, monitorCtx context.Context) {
-	var stockData types.StockData
 	tickerChan := time.NewTicker(2 * time.Second)
 	defer tickerChan.Stop()
 
 	for {
 		select {
 		case <-monitorCtx.Done():
-			// Stop monitoring if no longer needed
+			log.Println("Stopping monitoring for:", monitoringData.TickerToMonitor)
+
 			c.hub.mu.Lock()
-			clients := c.hub.activeTickersMap[monitoringData.TickerToMonitor]
-			for i, client := range clients {
-				if client == c {
-					c.hub.activeTickersMap[monitoringData.TickerToMonitor] = append(clients[:i], clients[i+1:]...)
-					break
+			if clients, exists := c.hub.activeTickersMap[monitoringData.TickerToMonitor]; exists {
+				for i, client := range clients {
+					if client == c {
+						c.hub.activeTickersMap[monitoringData.TickerToMonitor] = append(clients[:i], clients[i+1:]...)
+						break
+					}
+				}
+				if len(c.hub.activeTickersMap[monitoringData.TickerToMonitor]) == 0 {
+					delete(c.hub.activeTickersMap, monitoringData.TickerToMonitor)
 				}
 			}
 			c.hub.mu.Unlock()
 			return
+
 		case <-tickerChan.C:
-			// Fetch the latest stock price
-			currentPrice, currentTime, err := utils.GetCurrentStockPriceAndTime(monitoringData.Ticker, stockData)
+			currentPrice, currentTime, err := utils.GetCurrentStockPriceAndTime(monitoringData.Ticker, types.StockData{})
 			if err != nil {
 				log.Printf("Error fetching stock price: %v", err)
 				continue
 			}
 
-			// Prepare the response
-			response := map[string]interface{}{
+			responseJSON, _ := json.Marshal(map[string]interface{}{
 				"statusCode": http.StatusOK,
 				"message":    "Latest price fetched successfully",
 				"data": types.GetCurrentPrice{
@@ -132,22 +158,14 @@ func (c *Client) monitorStockPrice(monitoringData types.MonitorStockPrice, alert
 					CurrentFetchedTime:  currentTime,
 					AlertID:             alertID,
 				},
-				"error": nil,
-			}
-
-			// Send stock price updates to all clients monitoring the ticker
-			responseJSON, err := json.Marshal(response)
-			if err != nil {
-				log.Printf("Error marshaling response: %v", err)
-				continue
-			}
+			})
 
 			c.hub.mu.RLock()
 			for _, client := range c.hub.activeTickersMap[monitoringData.TickerToMonitor] {
 				select {
 				case client.send <- responseJSON:
-				case <-time.After(writeWait):
-					log.Printf("Failed to send message to client: timeout")
+				default:
+					log.Println("Client send buffer full, skipping message")
 				}
 			}
 			c.hub.mu.RUnlock()
@@ -158,29 +176,49 @@ func (c *Client) monitorStockPrice(monitoringData types.MonitorStockPrice, alert
 func (c *Client) WritePump() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
+		log.Println("WritePump stopping...")
 		ticker.Stop()
-		c.conn.Close()
+		c.hub.mu.Lock()
+		if c.conn != nil {
+			c.conn.Close()
+			c.conn = nil
+			log.Println("WebSocket connection closed in WritePump")
+		}
+		c.hub.mu.Unlock()
 	}()
 
 	for {
 		select {
 		case message, ok := <-c.send:
+			fmt.Println("message received in write pump")
+			c.hub.mu.Lock()
+			if c.conn == nil {
+				c.hub.mu.Unlock()
+				return // Stop if connection is nil
+			}
 			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+			c.hub.mu.Unlock()
+
 			if !ok {
-				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
-
-			err := c.conn.WriteMessage(websocket.TextMessage, message)
-			if err != nil {
-				log.Printf("Error writing message: %v", err)
+			fmt.Println("writing mess")
+			if err := c.conn.WriteMessage(websocket.TextMessage, message); err != nil {
+				log.Printf("WebSocket write error: %v", err)
 				return
 			}
 
 		case <-ticker.C:
+			c.hub.mu.Lock()
+			if c.conn == nil {
+				c.hub.mu.Unlock()
+				return
+			}
 			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+			c.hub.mu.Unlock()
+
 			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-				log.Printf("Error writing ping: %v", err)
+				log.Printf("WebSocket ping error: %v", err)
 				return
 			}
 		}
@@ -193,9 +231,15 @@ func (c *Client) WritePump() {
 // }
 
 func ServeWs(c *gin.Context, hub *Hub, w http.ResponseWriter, r *http.Request) {
+	// Add check for existing connection
+	// if oldClient, exists := hub.clientsMap[r.URL.Query().Get("alertId")]; exists {
+	//     hub.UnregisterClientByAlertID(r.URL.Query().Get("alertId"))
+	//     oldClient.conn.Close()
+	// }
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Println(err)
+		log.Println("Upgrade error:", err)
 		return
 	}
 
@@ -207,6 +251,15 @@ func ServeWs(c *gin.Context, hub *Hub, w http.ResponseWriter, r *http.Request) {
 	}
 
 	client.hub.register <- client
+
+	fmt.Printf("clientMap : %v\n", client.hub.clientsMap)
+	// // Add alert ID to client mapping
+	// alertID := r.URL.Query().Get("alertId")
+	// if alertID != "" {
+	//     hub.mu.Lock()
+	//     hub.clientsMap[alertID] = client
+	//     hub.mu.Unlock()
+	// }
 
 	go client.WritePump()
 	go client.ReadPump(c)

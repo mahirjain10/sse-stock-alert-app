@@ -31,8 +31,9 @@ func PublishToPubSub(redisClient *redis.Client, ctx context.Context, topicName s
 func SubscribeToPubSub(redisClient *redis.Client, ctx context.Context, topicName string) {
 	// Subscribe to the given topic
 	subscription := redisClient.Subscribe(ctx, topicName)
+	defer subscription.Close()
 	channel := subscription.Channel()
-
+	fmt.Println("alert pub sub recieved")
 	// Loop to listen for messages on the channel
 	for msg := range channel {
 		// Unmarshal the message from JSON into the UpdateActiveStatus struct

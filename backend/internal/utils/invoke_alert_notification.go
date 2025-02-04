@@ -20,7 +20,7 @@ func InvokeAlertNotificationAPI(message types.UpdateActiveStatus ) error {
 	}
 
 	// Make the HTTP POST request
-	resp, err := http.Post("http://localhost:8080/alert-notification", "application/json", bytes.NewBuffer(payload))
+	resp, err := http.Post("http://localhost:8080/api/alert/alert-notification", "application/json", bytes.NewBuffer(payload))
 	if err != nil {
 		return fmt.Errorf("failed to call alert notification API: %v", err)
 	}

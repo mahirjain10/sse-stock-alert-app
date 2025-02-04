@@ -8,9 +8,10 @@ import (
 	"github.com/mahirjain_10/stock-alert-app/backend/internal/helpers"
 	"github.com/mahirjain_10/stock-alert-app/backend/internal/types"
 	"github.com/mahirjain_10/stock-alert-app/backend/internal/utils"
+	"github.com/mahirjain_10/stock-alert-app/backend/internal/websocket"
 )
 
-func SendAlertNotification(c *gin.Context, r *gin.Engine, app *types.App) {
+func SendAlertNotification(c *gin.Context, r *gin.Engine, app *types.App,hub *websocket.Hub) {
 	ctx := context.Background()
 	
 	var UpdateActiveStatus types.UpdateActiveStatus
@@ -19,8 +20,8 @@ func SendAlertNotification(c *gin.Context, r *gin.Engine, app *types.App) {
 	}
 	
 	// Unregister the WebSocket client before updating the status
-	// if hub := app.Hub; hub != nil {
-	// 	hub.UnregisterClientByAlertID(UpdateActiveStatus.ID)
+	// if hub := hub.UnregisterClientByAlertID(UpdateActiveStatus; hub != nil {
+		hub.UnregisterClientByAlertID(UpdateActiveStatus.ID)
 	// }
 	
 	utils.UpdateActiveStatusUtil(c, ctx, UpdateActiveStatus.UserID, UpdateActiveStatus.ID, UpdateActiveStatus.Active, app)

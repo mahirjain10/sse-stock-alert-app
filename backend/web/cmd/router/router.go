@@ -44,5 +44,8 @@ func RegisterRoutes(r *gin.Engine, hub *websocket.Hub, app *types.App) {
 		alertRoutes.DELETE("/delete-stock-alert", func(c *gin.Context) {
 			alert.DeleteStockAlert(c, r, app)
 		})
+		alertRoutes.POST("/alert-notification",func (c *gin.Context)  {
+			alert.SendAlertNotification(c,r,app,hub)
+		})
 	}
 }

@@ -55,11 +55,9 @@ func main() {
 	go hub.Run()
 
 	// Register routes
-	go func() {
-		log.Println("Starting Redis subscription...")
-		utils.Subscribe(appInstance.RedisClient, ctx)
-		utils.SubscribeToPubSub(appInstance.RedisClient, ctx, "alert-topic")
-	}()
+	go utils.Subscribe(appInstance.RedisClient, ctx)
+	go utils.SubscribeToPubSub(appInstance.RedisClient, ctx, "alert-topic")
+	
 
 	router.RegisterRoutes(r, hub, &appInstance)
 	log.Fatal(r.Run(":8080"))

@@ -1,18 +1,23 @@
 package websocket
 
 import (
+	"context"
+	"fmt"
 	"sync"
+
+	"github.com/gorilla/websocket"
 )
 
 // Hub manages WebSocket clients and their mappings.
 type Hub struct {
 	mu               sync.RWMutex
-	clients          map[*Client]bool         // Set of all active clients
-	clientsMap       map[string]*Client       // Maps alertId/userId to client
-	activeTickersMap map[string][]*Client     // Maps ticker to a list of clients
-	register         chan *Client             // Channel for registering new clients
-	unregister       chan *Client             // Channel for unregistering clients
-	quit             chan struct{}            // Channel to stop the hub gracefully
+	clients          map[*Client]bool     // Set of all active clients
+	clientsMap       map[string]*Client   // Maps alertId/userId to client
+	activeTickersMap map[string][]*Client // Maps ticker to a list of clients
+	activeCtxMap     map[string]context.CancelFunc
+	register         chan *Client  // Channel for registering new clients
+	unregister       chan *Client  // Channel for unregistering clients
+	quit             chan struct{} // Channel to stop the hub gracefully
 }
 
 // NewHub creates and returns a new Hub instance with initialized channels and maps.
@@ -21,6 +26,7 @@ func NewHub() *Hub {
 		clients:          make(map[*Client]bool),
 		clientsMap:       make(map[string]*Client),
 		activeTickersMap: make(map[string][]*Client),
+		activeCtxMap: make(map[string]context.CancelFunc),
 		register:         make(chan *Client),
 		unregister:       make(chan *Client),
 		quit:             make(chan struct{}),
@@ -35,6 +41,7 @@ func (h *Hub) Run() {
 			h.mu.Lock()
 			h.clients[client] = true
 			h.mu.Unlock()
+			fmt.Printf("client map : in run func : %v",client.hub.clientsMap)
 
 		case client := <-h.unregister:
 			h.mu.Lock()
@@ -45,8 +52,10 @@ func (h *Hub) Run() {
 				for alertID, c := range h.clientsMap {
 					if c == client {
 						delete(h.clientsMap, alertID)
+						fmt.Printf("deleted client")
 					}
 				}
+
 
 				// Clean up corresponding mappings in activeTickersMap
 				for ticker, clients := range h.activeTickersMap {
@@ -75,9 +84,9 @@ func (h *Hub) Run() {
 				// Close all client send channels
 				close(client.send)
 			}
-			h.clients = nil             // Clear the clients map
-			h.clientsMap = nil          // Clear the clientsMap
-			h.activeTickersMap = nil    // Clear the activeTickersMap
+			h.clients = nil          // Clear the clients map
+			h.clientsMap = nil       // Clear the clientsMap
+			h.activeTickersMap = nil // Clear the activeTickersMap
 			h.mu.Unlock()
 			return
 		}
@@ -93,13 +102,36 @@ func (h *Hub) UnregisterClientByAlertID(alertID string) {
 
 	// Find the client associated with this alert ID
 	if client, exists := h.clientsMap[alertID]; exists {
+		// Send a WebSocket close frame before closing the connection
+		err := client.conn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "Closing connection"))
+		if err != nil {
+			fmt.Println("Failed to send close message:", err)
+		}
+
 		// Trigger unregistration through the channel
 		h.unregister <- client
-		
-		// Close the websocket connection
+		fmt.Println("unregistered from func 104")
+
+		// Close the WebSocket connection properly
 		client.conn.Close()
-		
+		fmt.Println("closed from func 107")
+
 		// Signal the monitoring goroutine to stop
-		close(client.done)
+		select {
+		case <-client.done:
+			// Already closed, do nothing
+		default:
+			close(client.done)
+		}
+		fmt.Println("unregistered from func done 110")
+	}
+
+	// Stop the monitoring goroutine if it exists
+	if cancelMonitor, exists := h.activeCtxMap[alertID]; exists {
+		cancelMonitor()
+		delete(h.activeCtxMap, alertID)
 	}
 }
+
+
+// new
