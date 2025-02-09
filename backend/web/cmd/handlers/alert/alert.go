@@ -145,6 +145,8 @@ func CreateStockAlert(c *gin.Context, r *gin.Engine, app *types.App) {
 
 
 
+	fmt.Printf("Printing hash key : %s\n ",monitorStockHashKey)
+
 	val, err = app.RedisClient.HSet(ctx, monitorStockHashKey, monitorStockRedis).Result()
 	if val == 0 {
 		log.Println("Data could not saved in redis")
@@ -293,3 +295,4 @@ func UpdateActiveStatus(c *gin.Context, r *gin.Engine, app *types.App) {
 		helpers.SendResponse(c, http.StatusOK, "Stock alert status updated successfully", nil, nil, true)
 	}
 }
+

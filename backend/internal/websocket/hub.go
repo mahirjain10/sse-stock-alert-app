@@ -3,6 +3,7 @@ package websocket
 import (
 	"context"
 	"fmt"
+	"log"
 	"sync"
 
 	"github.com/gorilla/websocket"
@@ -40,53 +41,53 @@ func (h *Hub) Run() {
 		case client := <-h.register:
 			h.mu.Lock()
 			h.clients[client] = true
+			log.Printf("Client registered: %v", client)
+			log.Printf("Current clients: %v", h.clients)
 			h.mu.Unlock()
-			fmt.Printf("client map : in run func : %v",client.hub.clientsMap)
 
 		case client := <-h.unregister:
 			h.mu.Lock()
 			if _, ok := h.clients[client]; ok {
 				delete(h.clients, client)
+				log.Printf("Client unregistered: %v", client)
+				log.Printf("Current clients: %v", h.clients)
 
 				// Clean up corresponding mappings in clientsMap
 				for alertID, c := range h.clientsMap {
 					if c == client {
 						delete(h.clientsMap, alertID)
-						fmt.Printf("deleted client")
+						log.Printf("Deleted client from clientsMap: %s", alertID)
 					}
 				}
-
 
 				// Clean up corresponding mappings in activeTickersMap
 				for ticker, clients := range h.activeTickersMap {
 					for i, c := range clients {
 						if c == client {
-							// Remove the client from the slice
 							h.activeTickersMap[ticker] = append(clients[:i], clients[i+1:]...)
+							log.Printf("Removed client from activeTickersMap: %s", ticker)
 							break
 						}
 					}
-					// If no clients remain for this ticker, remove the ticker entry
 					if len(h.activeTickersMap[ticker]) == 0 {
 						delete(h.activeTickersMap, ticker)
+						log.Printf("Deleted ticker from activeTickersMap: %s", ticker)
 					}
 				}
 
-				// Close the send channel for the client to signal shutdown
 				close(client.send)
 			}
 			h.mu.Unlock()
 
 		case <-h.quit:
-			// Gracefully stop the hub
 			h.mu.Lock()
 			for client := range h.clients {
-				// Close all client send channels
 				close(client.send)
 			}
-			h.clients = nil          // Clear the clients map
-			h.clientsMap = nil       // Clear the clientsMap
-			h.activeTickersMap = nil // Clear the activeTickersMap
+			h.clients = nil
+			h.clientsMap = nil
+			h.activeTickersMap = nil
+			log.Println("Hub stopped, all clients and maps cleared")
 			h.mu.Unlock()
 			return
 		}
@@ -129,9 +130,11 @@ func (h *Hub) UnregisterClientByAlertID(alertID string) {
 	// Stop the monitoring goroutine if it exists
 	if cancelMonitor, exists := h.activeCtxMap[alertID]; exists {
 		cancelMonitor()
+		log.Printf("Before cancelling ,activeCtxMap : %v\n",h.activeCtxMap)
+		log.Println("Cancelling context from line 133 hub")
 		delete(h.activeCtxMap, alertID)
+		log.Printf("After cancelling ,activeCtxMap : %v\n",h.activeCtxMap)
 	}
 }
-
 
 // new

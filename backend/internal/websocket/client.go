@@ -18,7 +18,7 @@ import (
 
 const (
 	writeWait      = 10 * time.Second    // Time to wait for writing a message
-	pongWait       = 60 * time.Second    // Time to wait before considering the connection dead if no Pong is received
+	pongWait       = 30 * time.Second    // Time to wait before considering the connection dead if no Pong is received
 	pingPeriod     = (pongWait * 9) / 10 // Ping interval (90% of pongWait)
 	maxMessageSize = 512                 // Max allowed message size for WebSocket
 )
@@ -43,15 +43,15 @@ type Client struct {
 func (c *Client) ReadPump(ctx *gin.Context) {
 	defer func() {
 		c.hub.unregister <- c
+		log.Printf("Client unregistered in ReadPump: %v", c)
 
 		c.hub.mu.Lock()
 		if c.conn != nil {
 			c.conn.Close()
-			c.conn = nil // Prevent double-closing
+			c.conn = nil
 		}
 		c.hub.mu.Unlock()
 
-		// Ensure 'done' is closed only once
 		select {
 		case <-c.done:
 		default:
@@ -66,33 +66,24 @@ func (c *Client) ReadPump(ctx *gin.Context) {
 		return nil
 	})
 
-	fmt.Printf("printing client map at 68 : %v\n", c.hub.clientsMap)
+	log.Printf("Client map at start of ReadPump: %v", c.hub.clientsMap)
 
 	monitorCtx, cancelMonitor := context.WithCancel(context.Background())
-	fmt.Println("printing at 72")
-	defer cancelMonitor() // Ensure cancel is called when the function exits
+	defer cancelMonitor()
 
 	for {
 		select {
-		case <-c.done: // If client.done is closed, exit loop
+		case <-c.done:
 			log.Println("Client disconnected, exiting ReadPump")
 			return
 		default:
-			fmt.Println("printing at 81")
+			log.Println("IN HERE")
 			_, message, err := c.conn.ReadMessage()
-			fmt.Println("printing at 83")
-			fmt.Println(message)
+			log.Println("AFTER READ PUMP ")
 			if err != nil {
-				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-					log.Printf("WebSocket read error: %v", err)
-				} else if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
-					log.Println("WebSocket connection closed normally")
-				} else {
-					log.Println("WebSocket connection closed unexpectedly")
-				}
+				log.Printf("WebSocket read error: %v", err)
 				return
 			}
-			fmt.Println("printing at 96")
 			var monitoringData types.MonitorStockPrice
 			if err := json.Unmarshal(message, &monitoringData); err != nil {
 				log.Printf("Invalid message: %v", err)
@@ -101,11 +92,13 @@ func (c *Client) ReadPump(ctx *gin.Context) {
 
 			c.hub.mu.Lock()
 			c.hub.clientsMap[monitoringData.AlertID] = c
-			fmt.Println(c.hub.clientsMap)
+			log.Printf("Updated clientsMap: %v", c.hub.clientsMap)
 
 			if _, exists := c.hub.activeTickersMap[monitoringData.TickerToMonitor]; !exists {
 				c.hub.activeTickersMap[monitoringData.TickerToMonitor] = []*Client{c}
 				c.hub.activeCtxMap[monitoringData.AlertID] = cancelMonitor
+				log.Printf("Added to activeTickersMap: %s", monitoringData.TickerToMonitor)
+				log.Printf("Updated activeCtxMap: %v", c.hub.activeCtxMap)
 
 				go func() {
 					c.monitorStockPrice(monitoringData, monitoringData.AlertID, monitorCtx)
@@ -113,6 +106,7 @@ func (c *Client) ReadPump(ctx *gin.Context) {
 			} else {
 				c.hub.activeTickersMap[monitoringData.TickerToMonitor] = append(c.hub.activeTickersMap[monitoringData.TickerToMonitor], c)
 				c.hub.activeCtxMap[monitoringData.AlertID] = cancelMonitor
+				log.Printf("Appended to activeTickersMap: %s", monitoringData.TickerToMonitor)
 			}
 			c.hub.mu.Unlock()
 		}
@@ -132,12 +126,16 @@ func (c *Client) monitorStockPrice(monitoringData types.MonitorStockPrice, alert
 			if clients, exists := c.hub.activeTickersMap[monitoringData.TickerToMonitor]; exists {
 				for i, client := range clients {
 					if client == c {
+						log.Println("Removing client from active ticker map")
 						c.hub.activeTickersMap[monitoringData.TickerToMonitor] = append(clients[:i], clients[i+1:]...)
+						// log.Println("Removing client from active ticker map")
+						log.Println("actievtciker Map from IF : ", c.hub.activeTickersMap)
 						break
 					}
 				}
 				if len(c.hub.activeTickersMap[monitoringData.TickerToMonitor]) == 0 {
 					delete(c.hub.activeTickersMap, monitoringData.TickerToMonitor)
+					log.Println("actievtciker Map : ", c.hub.activeTickersMap)
 				}
 			}
 			c.hub.mu.Unlock()
@@ -159,7 +157,7 @@ func (c *Client) monitorStockPrice(monitoringData types.MonitorStockPrice, alert
 					AlertID:             alertID,
 				},
 			})
-
+			fmt.Println("IN MONITOR STOCK : ",responseJSON)
 			c.hub.mu.RLock()
 			for _, client := range c.hub.activeTickersMap[monitoringData.TickerToMonitor] {
 				select {

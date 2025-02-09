@@ -3,7 +3,6 @@ package utils
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -44,13 +43,29 @@ func UpdateActiveStatusUtil(c *gin.Context,ctx context.Context,userID string,ale
 	}
 
 	if retrieveStockAlertData.Active != updatedStatus {
-		val, err := app.RedisClient.HSet(ctx, userID, "active", updatedStatus).Result()
-		if val == 0 {
-			log.Println("Could not save alert status in redis")
-		}
+		// val, err := app.RedisClient.HSet(ctx, userID, "active", updatedStatus).Result()
+		// if val == 0 {
+		// 	log.Println("Could not save alert status in redis")
+		// }
+		// if err != nil {
+		// 	// Log the error and return it or handle it as per your application's error handling policy
+		// 	log.Printf("Error updating alert status in Redis for ID %s: %v", userID, err)
+		// }
+		key := fmt.Sprintf("monitor_stock:%s", retrieveStockAlertData.ID)
+
+		fmt.Println("key : ",key)
+		fmt.Println(retrieveStockAlertData.ID)
+		result, err := app.RedisClient.Del(ctx, key).Result()
 		if err != nil {
-			// Log the error and return it or handle it as per your application's error handling policy
-			log.Printf("Error updating alert status in Redis for ID %s: %v", userID, err)
+			fmt.Println("Error deleting hash:", err)
+			return false
+		}
+	
+		if result > 0 {
+			fmt.Println("Hash key deleted successfully")
+		} else {
+			fmt.Println("Hash key not found")
+			return false
 		}
 	}
 	return true

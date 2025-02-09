@@ -71,8 +71,12 @@ func Subscribe(redisClient *redis.Client, ctx context.Context) {
 			log.Println("WebSocket dial error:", err)
 			return nil, err
 		}
+
 		log.Println("WebSocket connected successfully")
-		startWebSocketReader(newConn, redisClient, ctx, ist)
+
+		// 🛑 Ensure the reader starts BEFORE returning the connection
+		go startWebSocketReader(newConn, redisClient, ctx, ist)
+
 		return newConn, nil
 	}
 
@@ -87,7 +91,7 @@ func Subscribe(redisClient *redis.Client, ctx context.Context) {
 	}
 	defer conn.Close()
 
-	processRedisMessages(pubsub, &conn, connectWebSocket, ctx, ist)
+	processRedisMessages(pubsub, &conn, connectWebSocket, ctx, ist, redisClient)
 }
 
 // READ MESSAGE AND MONITORS THE PRICES USING FUNC
@@ -149,7 +153,7 @@ func ComparePriceAndThreshold(redisClient *redis.Client, ctx context.Context, al
 	}
 
 	fmt.Println(count)
-	if count == 10 ||count == 15 || count == 5 && alertData["ticker"] == "LICI.NS" {
+	if count == 10 || count == 15 || count == 5 && alertData["ticker"] == "LICI.NS" {
 		currentPrice = alertPrice
 		fmt.Println("current price := ", currentPrice)
 	}
@@ -180,7 +184,7 @@ func ComparePriceAndThreshold(redisClient *redis.Client, ctx context.Context, al
 }
 
 // PROCESSES THE INCOMING MESSAGE FROM PUBLISH AND SENDS THE MESSAGE TO WEBSOCKET
-func processRedisMessages(pubsub *redis.PubSub, conn **websocket.Conn, reconnectFunc func() (*websocket.Conn, error), ctx context.Context, ist *time.Location) {
+func processRedisMessages(pubsub *redis.PubSub, conn **websocket.Conn, reconnectFunc func() (*websocket.Conn, error), ctx context.Context, ist *time.Location, redisClient *redis.Client) {
 	for {
 		msg, err := pubsub.ReceiveMessage(ctx)
 		if err != nil {
@@ -192,24 +196,38 @@ func processRedisMessages(pubsub *redis.PubSub, conn **websocket.Conn, reconnect
 		log.Printf("[%s] - Received message: %s\n", currentTime, msg.Payload)
 
 		log.Printf("connection from line 188 : %v", *conn)
-
 		// Attempt to send message over WebSocket
-		if err := (*conn).WriteMessage(websocket.TextMessage, []byte(msg.Payload)); err != nil {
+		if (*conn) == nil {
+			log.Println("Cannot send message: WebSocket connection is nil.")
+			continue
+		}
+
+		err = (*conn).WriteMessage(websocket.TextMessage, []byte(msg.Payload))
+		if err != nil {
 			log.Println("WebSocket write error. Reconnecting...")
 			log.Printf("error of write message : %v", err)
-			(*conn).Close()
 
-			// Attempt to reconnect
-			for {
-				newConn, err := reconnectFunc()
-				if err == nil {
-					*conn = newConn // Update the connection reference
-					log.Println("Reconnected successfully")
-					break
-				}
-				log.Println("Retrying WebSocket connection in 5 seconds...")
-				time.Sleep(5 * time.Second)
+			(*conn).Close()
+			*conn = nil // ✅ Prevent writing to a closed connection
+
+			continue
+		}
+		// Attempt to reconnect
+		for {
+			newConn, err := reconnectFunc()
+			if err == nil {
+				*conn = newConn
+				log.Println("Reconnected successfully, waiting before sending messages...")
+
+				time.Sleep(2 * time.Second) // 🛑 Give some time for WebSocket readiness
+				
+				// ⚡ Re-subscribe to Redis after reconnecting
+				pubsub = redisClient.Subscribe(ctx, redisChannel)
+				log.Println("Re-subscribed to Redis channel")
+				break
 			}
+			log.Println("Retrying WebSocket connection in 5 seconds...")
+			time.Sleep(5 * time.Second)
 		}
 	}
 }
