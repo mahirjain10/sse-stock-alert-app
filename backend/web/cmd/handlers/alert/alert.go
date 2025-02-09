@@ -14,8 +14,8 @@ import (
 	"github.com/mahirjain_10/stock-alert-app/backend/internal/models"
 	"github.com/mahirjain_10/stock-alert-app/backend/internal/types"
 	"github.com/mahirjain_10/stock-alert-app/backend/internal/utils"
+	"github.com/mahirjain_10/stock-alert-app/backend/internal/websocket"
 )
-
 
 func GetCurrentStockPriceAndTime(c *gin.Context, r *gin.Engine, app *types.App) {
 	// var stock types.GetCurrentPrice
@@ -52,7 +52,7 @@ func GetCurrentStockPriceAndTime(c *gin.Context, r *gin.Engine, app *types.App) 
 		},
 		"error": nil,
 	}
-	
+
 	// Return the response
 	fmt.Println(stockData)
 	// c.JSON(http.StatusOK, response)
@@ -62,7 +62,7 @@ func GetCurrentStockPriceAndTime(c *gin.Context, r *gin.Engine, app *types.App) 
 func CreateStockAlert(c *gin.Context, r *gin.Engine, app *types.App) {
 	ctx := context.Background()
 	var alertInput types.StockAlert
-	var monitorStockPrice types.MonitorStockPrice
+	// var monitorStockPrice types.MonitorStockPrice
 
 	// Bind and validate JSON input
 	if !helpers.BindAndValidateJSON(c, &alertInput) {
@@ -101,20 +101,21 @@ func CreateStockAlert(c *gin.Context, r *gin.Engine, app *types.App) {
 	}
 	// Generate a unique ID for the alert
 	alertInput.ID = uuid.New().String()
-
+	alertInput.Active = true
 	// Insert stock alert data into the database
 	if err := models.InsertStockAlertData(app, alertInput); err != nil {
 		log.Printf("Error inserting stock alert data: %v", err)
 		helpers.SendResponse(c, http.StatusInternalServerError, "Error saving stock alert", nil, nil, false)
 		return
 	}
-		// Save alert data in Redis
+	log.Printf("acitve status : %t", alertInput.Active)
+	// Save alert data in Redis
 	alertData := map[string]interface{}{
 		"user_id":         user.ID,
 		"ticker":          alertInput.TickerToMonitor,
 		"alert_price":     alertInput.AlertPrice,
 		"alert_condition": alertInput.Condition,
-		"active":          alertInput.Active,
+		"active":          strconv.FormatBool(alertInput.Active),
 	}
 	val, err := app.RedisClient.HSet(ctx, alertInput.ID, alertData).Result()
 	if val == 0 {
@@ -123,44 +124,44 @@ func CreateStockAlert(c *gin.Context, r *gin.Engine, app *types.App) {
 	if err != nil {
 		log.Printf("Error saving alert to Redis: %v\n", err)
 	}
-	
+
 	// Insert stock monitoring data into database
-	monitorStockPrice.ID=uuid.NewString()
-	monitorStockPrice.AlertID=alertInput.ID
-	monitorStockPrice.TickerToMonitor=alertInput.TickerToMonitor
-	monitorStockPrice.IsActive=true
+	// monitorStockPrice.ID=uuid.NewString()
+	// monitorStockPrice.AlertID=alertInput.ID
+	// monitorStockPrice.TickerToMonitor=alertInput.TickerToMonitor
+	// monitorStockPrice.IsActive=true
 
-	err = models.InsertMonitorStockData(app,monitorStockPrice)
-	if err != nil {
-		log.Printf("Error inserting stock monitoring data: %v", err)
-		helpers.SendResponse(c, http.StatusInternalServerError, "Error saving stock monitoring data", nil, nil, false)
-		return
-	}
-	monitorStockHashKey := "monitor_stock:" + monitorStockPrice.ID
-	monitorStockRedis := make(map[string]string)
-	monitorStockRedis["id"]=monitorStockPrice.ID
-	monitorStockRedis["alert_id"]=monitorStockPrice.AlertID
-	monitorStockRedis["ticker"]=monitorStockPrice.TickerToMonitor
-	monitorStockRedis["is_active"]=strconv.FormatBool(monitorStockPrice.IsActive)
+	// err = models.InsertMonitorStockData(app,monitorStockPrice)
+	// if err != nil {
+	// 	log.Printf("Error inserting stock monitoring data: %v", err)
+	// 	helpers.SendResponse(c, http.StatusInternalServerError, "Error saving stock monitoring data", nil, nil, false)
+	// 	return
+	// }
+	// monitorStockHashKey := "monitor_stock : " + monitorStockPrice.ID
+	// monitorStockRedis := make(map[string]string)
+	// monitorStockRedis["id"]=monitorStockPrice.ID
+	// monitorStockRedis["alert_id"]=monitorStockPrice.AlertID
+	// monitorStockRedis["ticker"]=monitorStockPrice.TickerToMonitor
+	// monitorStockRedis["is_active"]=strconv.FormatBool(monitorStockPrice.IsActive)
 
+	// fmt.Printf("Printing hash key : %s\n ",monitorStockHashKey)
 
-
-	fmt.Printf("Printing hash key : %s\n ",monitorStockHashKey)
-
-	val, err = app.RedisClient.HSet(ctx, monitorStockHashKey, monitorStockRedis).Result()
-	if val == 0 {
-		log.Println("Data could not saved in redis")
-	}
-	if err != nil {
-		log.Printf("Error saving stock monitoring data to Redis: %v\n", err)
-		return;
-	}
+	// val, err = app.RedisClient.HSet(ctx, monitorStockHashKey, monitorStockRedis).Result()
+	// if val == 0 {
+	// 	log.Println("Data could not saved in redis")
+	// }
+	// if err != nil {
+	// 	log.Printf("Error saving stock monitoring data to Redis: %v\n", err)
+	// 	return;
+	// }
 
 	// Publish alert to Redis channel
 	utils.Publish(app.RedisClient, ctx, alertInput.TickerToMonitor, alertInput.ID)
-
+    data:=make(map[string]interface{})
+	fmt.Println(alertInput.ID)
+	data["alert_id"]=alertInput.ID
 	// Send success response
-	helpers.SendResponse(c, http.StatusCreated, "Stock alert created successfully", nil, nil, true)
+	helpers.SendResponse(c, http.StatusCreated, "Stock alert created successfully", data, nil, true)
 }
 
 func UpdateStockAlert(c *gin.Context, r *gin.Engine, app *types.App) {
@@ -289,10 +290,55 @@ func UpdateActiveStatus(c *gin.Context, r *gin.Engine, app *types.App) {
 		return
 	}
 
-	isSuccess := utils.UpdateActiveStatusUtil(c,ctx,updateActiveStatus.UserID,updateActiveStatus.ID,updateActiveStatus.Active,app)
+	isSuccess := utils.UpdateActiveStatusUtil(c, ctx, updateActiveStatus.UserID, updateActiveStatus.ID, updateActiveStatus.Active, app)
 
 	if isSuccess {
 		helpers.SendResponse(c, http.StatusOK, "Stock alert status updated successfully", nil, nil, true)
 	}
 }
 
+func StartStockAlertMonitoring(c *gin.Context, r *gin.Engine, app *types.App){
+	ctx := context.Background()
+    
+	var startMonitoring types.StartMonitoring
+	if !helpers.BindAndValidateJSON(c,&startMonitoring){
+		return
+	}
+
+	success := utils.UpdateActiveStatusUtil(c,ctx,startMonitoring.UserID,startMonitoring.AlertID,true,app)
+    // if err != nil{
+	// 	helpers.SendResponse(c, http.StatusInternalServerError, "Internal server error", nil, nil, false)
+	// 	return
+	// }
+	if !success{
+		helpers.SendResponse(c, http.StatusInternalServerError, "Internal server error", nil, nil, false)
+		return
+	}
+	utils.Publish(app.RedisClient, ctx, startMonitoring.TickerToMonitor, startMonitoring.AlertID)
+	helpers.SendResponse(c, http.StatusOK, "Stock monitoring started successgfully", nil, nil, true)
+    
+}
+
+func StopStockAlertMonitoring(c *gin.Context, r *gin.Engine, app *types.App,hub *websocket.Hub){
+	ctx := context.Background()
+    
+	var startMonitoring types.StartMonitoring
+	if !helpers.BindAndValidateJSON(c,&startMonitoring){
+		return
+	}
+
+	success := utils.UpdateActiveStatusUtil(c,ctx,startMonitoring.UserID,startMonitoring.AlertID,false,app)
+    // if err != nil{
+	// 	helpers.SendResponse(c, http.StatusInternalServerError, "Internal server error", nil, nil, false)
+	// 	return
+	// }
+	if !success{
+		fmt.Println("internal")
+		helpers.SendResponse(c, http.StatusInternalServerError, "Internal server error", nil, nil, false)
+		return
+	}
+	// utils.Publish(app.RedisClient, ctx, startMonitoring.TickerToMonitor, startMonitoring.AlertID)
+	hub.UnregisterClientByAlertID(startMonitoring.AlertID)
+	helpers.SendResponse(c, http.StatusOK, "Stock monitoring started successgfully", nil, nil, true)
+    
+}

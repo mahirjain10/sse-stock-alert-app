@@ -3,7 +3,9 @@ package utils
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/mahirjain_10/stock-alert-app/backend/internal/helpers"
@@ -12,20 +14,26 @@ import (
 	// model "github.com/mahirjain_10/stock-alert-app/backend/internal/models"
 )
 
-func UpdateActiveStatusUtil(c *gin.Context,ctx context.Context,userID string,alertID string ,updatedStatus bool,app *types.App) bool {
+func UpdateActiveStatusUtil(c *gin.Context, ctx context.Context, userID string, alertID string, updatedStatus bool, app *types.App) bool {
+
+	// Check if user exists or not
 	user, err := models.FindUserByID(app, userID)
 	if err != nil {
+		fmt.Printf("error in updateStatusUtils : %v",err)
 		helpers.SendResponse(c, http.StatusInternalServerError, "Internal server error", nil, nil, false)
 		return false
 	}
-	
+
 	if user.ID == "" {
+		fmt.Printf("error in updateStatusUtils : %v",err)
 		helpers.SendResponse(c, http.StatusNotFound, "User not found", nil, nil, false)
 		return false
 	}
 
+	// Check if stock data ID mapped to userID
 	retrieveStockAlertData, err := models.FindAlertNameByUserIDAndID(app, userID, alertID)
 	if err != nil {
+		fmt.Printf("error in updateStatusUtils : %v",err)
 		helpers.SendResponse(c, http.StatusInternalServerError, "Internal sever error", nil, nil, false)
 		return false
 	}
@@ -36,37 +44,40 @@ func UpdateActiveStatusUtil(c *gin.Context,ctx context.Context,userID string,ale
 		return false
 	}
 
+	// update alert status in stock alert db
 	err = models.UpdateActiveStatusByID(app, updatedStatus, alertID)
 	if err != nil {
+		fmt.Printf("error in updateStatusUtils : %v",err)
 		helpers.SendResponse(c, http.StatusInternalServerError, "Unable to update alert status ,Try again later", nil, nil, false)
 		return false
 	}
-
+     
+	// IF alert status in DB is not equal to Update Alert Status then
 	if retrieveStockAlertData.Active != updatedStatus {
-		// val, err := app.RedisClient.HSet(ctx, userID, "active", updatedStatus).Result()
-		// if val == 0 {
-		// 	log.Println("Could not save alert status in redis")
-		// }
-		// if err != nil {
-		// 	// Log the error and return it or handle it as per your application's error handling policy
-		// 	log.Printf("Error updating alert status in Redis for ID %s: %v", userID, err)
-		// }
-		key := fmt.Sprintf("monitor_stock:%s", retrieveStockAlertData.ID)
-
-		fmt.Println("key : ",key)
-		fmt.Println(retrieveStockAlertData.ID)
-		result, err := app.RedisClient.Del(ctx, key).Result()
+		fmt.Printf("updated Status : %t and alertID : %s", updatedStatus, alertID)
+		statusStr := strconv.FormatBool(updatedStatus)
+		_, err := app.RedisClient.HSet(ctx, alertID, "active", statusStr).Result()
 		if err != nil {
-			fmt.Println("Error deleting hash:", err)
+			log.Printf("Error updating alert status in Redis for ID %s: %v", alertID, err)
 			return false
 		}
-	
-		if result > 0 {
-			fmt.Println("Hash key deleted successfully")
-		} else {
-			fmt.Println("Hash key not found")
+		
+		// Verify if the update was successful
+		storedValue, err := app.RedisClient.HGet(ctx, alertID, "active").Result()
+		if err != nil {
+			log.Printf("Error retrieving alert status from Redis for ID %s: %v", alertID, err)
 			return false
 		}
+		
+		// Check if the retrieved value matches the expected value
+		if storedValue != statusStr {
+			log.Printf("Redis update verification failed: expected %s, got %s", statusStr, storedValue)
+			return false
+		}
+		
+		log.Println("Redis alert status updated successfully")
+		return true
+
 	}
 	return true
 }

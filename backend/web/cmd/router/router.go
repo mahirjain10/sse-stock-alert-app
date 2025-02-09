@@ -47,5 +47,11 @@ func RegisterRoutes(r *gin.Engine, hub *websocket.Hub, app *types.App) {
 		alertRoutes.POST("/alert-notification",func (c *gin.Context)  {
 			alert.SendAlertNotification(c,r,app,hub)
 		})
+		alertRoutes.POST("/start-monitoring",func (c *gin.Context)  {
+			alert.StartStockAlertMonitoring(c,r,app)
+		})
+		alertRoutes.POST("/stop-monitoring",func (c *gin.Context)  {
+			alert.StopStockAlertMonitoring(c,r,app,hub)
+		})
 	}
 }

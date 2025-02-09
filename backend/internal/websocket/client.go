@@ -85,10 +85,13 @@ func (c *Client) ReadPump(ctx *gin.Context) {
 				return
 			}
 			var monitoringData types.MonitorStockPrice
+			fmt.Printf("consoling incoming message from websocket : %s",message)
 			if err := json.Unmarshal(message, &monitoringData); err != nil {
 				log.Printf("Invalid message: %v", err)
 				continue
 			}
+
+			fmt.Printf("consoling monitor stock data after parsing : %v",monitoringData)
 
 			c.hub.mu.Lock()
 			c.hub.clientsMap[monitoringData.AlertID] = c

@@ -91,6 +91,11 @@ type StockAlert struct {
 	UpdatedAt  time.Time
 }
 
+type StartMonitoring struct{
+	AlertID string `json:"alert_id"`
+	UserID string `json:"user_id"`
+	Ticker
+}
 // UpdateStockAlert represents the fields to update an existing stock alert
 type UpdateStockAlert struct {
 	UserID     string  `json:"user_id"`
@@ -112,6 +117,8 @@ type DeleteStockAlert struct {
 	UserID string `json:"user_id"`
 	ID     string `json:"id"`
 }
+
+
 
 // -----------------------------------------
 // Stock Data Structure for Chart Data

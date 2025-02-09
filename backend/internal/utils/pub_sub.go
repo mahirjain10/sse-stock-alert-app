@@ -153,7 +153,9 @@ func ComparePriceAndThreshold(redisClient *redis.Client, ctx context.Context, al
 	}
 
 	fmt.Println(count)
-	if count == 10 || count == 15 || count == 5 && alertData["ticker"] == "LICI.NS" {
+	// if count == 10 || count == 15 || count == 5 && alertData["ticker"] == "LICI.NS" {
+	if count == 20 && alertData["ticker"] == "LICI.NS" {
+
 		currentPrice = alertPrice
 		fmt.Println("current price := ", currentPrice)
 	}
@@ -220,7 +222,7 @@ func processRedisMessages(pubsub *redis.PubSub, conn **websocket.Conn, reconnect
 				log.Println("Reconnected successfully, waiting before sending messages...")
 
 				time.Sleep(2 * time.Second) // 🛑 Give some time for WebSocket readiness
-				
+
 				// ⚡ Re-subscribe to Redis after reconnecting
 				pubsub = redisClient.Subscribe(ctx, redisChannel)
 				log.Println("Re-subscribed to Redis channel")
