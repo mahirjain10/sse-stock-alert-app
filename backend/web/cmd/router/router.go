@@ -2,6 +2,7 @@ package router
 
 import (
 	"github.com/gin-gonic/gin"
+	// "github.com/mahirjain_10/stock-alert-app/backend/internal/test"
 	"github.com/mahirjain_10/stock-alert-app/backend/internal/types"
 	"github.com/mahirjain_10/stock-alert-app/backend/internal/websocket"
 	"github.com/mahirjain_10/stock-alert-app/backend/web/cmd/handlers/alert"
@@ -44,14 +45,15 @@ func RegisterRoutes(r *gin.Engine, hub *websocket.Hub, app *types.App) {
 		alertRoutes.DELETE("/delete-stock-alert", func(c *gin.Context) {
 			alert.DeleteStockAlert(c, r, app)
 		})
-		alertRoutes.POST("/alert-notification",func (c *gin.Context)  {
-			alert.SendAlertNotification(c,r,app,hub)
+		alertRoutes.POST("/alert-notification", func(c *gin.Context) {
+			alert.SendAlertNotification(c, r, app, hub)
 		})
-		alertRoutes.POST("/start-monitoring",func (c *gin.Context)  {
-			alert.StartStockAlertMonitoring(c,r,app)
+		alertRoutes.POST("/start-monitoring", func(c *gin.Context) {
+			alert.StartStockAlertMonitoring(c, r, app)
 		})
-		alertRoutes.POST("/stop-monitoring",func (c *gin.Context)  {
-			alert.StopStockAlertMonitoring(c,r,app,hub)
+		alertRoutes.POST("/stop-monitoring", func(c *gin.Context) {
+			alert.StopStockAlertMonitoring(c, r, app, hub)
 		})
+
 	}
 }

@@ -8,6 +8,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/mahirjain_10/stock-alert-app/backend/internal/app"
+	"github.com/mahirjain_10/stock-alert-app/backend/internal/test"
+
+	// "github.com/mahirjain_10/stock-alert-app/backend/internal/test"
 	"github.com/mahirjain_10/stock-alert-app/backend/internal/types"
 	"github.com/mahirjain_10/stock-alert-app/backend/internal/utils"
 	"github.com/mahirjain_10/stock-alert-app/backend/internal/websocket"
@@ -57,8 +60,13 @@ func main() {
 	// Register routes
 	go utils.Subscribe(appInstance.RedisClient, ctx)
 	go utils.SubscribeToPubSub(appInstance.RedisClient, ctx, "alert-topic")
-	
 
+	
 	router.RegisterRoutes(r, hub, &appInstance)
+	
+	go func() {
+		log.Println("Starting WebSocket Load Test...")
+		test.Wstest() // Call load test function
+	}()
 	log.Fatal(r.Run(":8080"))
 }

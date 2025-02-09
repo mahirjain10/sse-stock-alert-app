@@ -9,6 +9,7 @@ import (
 	// "github.com/mahirjain_10/stock-alert-app/backend/internal/websocket"
 
 	// "github.com/mahirjain_10/stock-alert-app/backend/internal/websocket"
+	"github.com/golang-jwt/jwt"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -118,6 +119,10 @@ type DeleteStockAlert struct {
 	ID     string `json:"id"`
 }
 
+type CustomClaims struct {
+	ID string `json:"id"`
+	jwt.StandardClaims
+}
 
 
 // -----------------------------------------
