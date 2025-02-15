@@ -140,12 +140,13 @@ func startWebSocketReader(conn *websocket.Conn, redisClient *redis.Client, ctx c
 
 func ComparePriceAndThreshold(redisClient *redis.Client, ctx context.Context, alertID string, currentPrice float64) {
 	count++
+	fmt.Println("alert data from redis : ",alertID)
 	alertData, err := redisClient.HGetAll(ctx, alertID).Result()
 	if err != nil {
 		log.Printf("Error retrieving alert data from Redis: %v", err)
 		return
 	}
-
+	fmt.Println("alert data from redis : ",alertData)
 	alertPrice, err := strconv.ParseFloat(alertData["alert_price"], 64)
 	if err != nil {
 		log.Printf("Error parsing alert price: %v", err)

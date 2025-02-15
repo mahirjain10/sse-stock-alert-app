@@ -220,7 +220,7 @@ func UpdateActiveStatusByID(app *types.App, status bool, alertID string) error {
 }
 
 func InsertMonitorStockData(app *types.App, MSP types.MonitorStockPrice) error {
-	query:=`
+	query := `
 		INSERT INTO monitor_stock(
 			id, alert_id, ticker, is_active
 		)
@@ -232,7 +232,7 @@ func InsertMonitorStockData(app *types.App, MSP types.MonitorStockPrice) error {
 		return fmt.Errorf("failed to prepare statement: %w", err)
 	}
 	defer stmt.Close()
-	_,err = stmt.Exec(
+	_, err = stmt.Exec(
 		MSP.ID,
 		MSP.AlertID,
 		MSP.TickerToMonitor,
@@ -245,20 +245,19 @@ func InsertMonitorStockData(app *types.App, MSP types.MonitorStockPrice) error {
 	return nil
 }
 
-
 func ChangeStockMonitoringStatus(app *types.App, isActive bool, id string) error {
-	query:=`
+	query := `
 		UPDATE monitor_stock 
 		SET = is_active=?
 		WHERE id = ?
-	`	
+	`
 	stmt, err := app.DB.Prepare(query)
 	if err != nil {
 		fmt.Printf("Error preparing statement: %v\n", err)
 		return fmt.Errorf("failed to prepare statement: %w", err)
 	}
 	defer stmt.Close()
-	_,err = stmt.Exec(
+	_, err = stmt.Exec(
 		isActive,
 		id,
 	)
@@ -267,4 +266,42 @@ func ChangeStockMonitoringStatus(app *types.App, isActive bool, id string) error
 		return fmt.Errorf("failed to update monitor stock data: %w", err)
 	}
 	return nil
+}
+
+func GetAllActiveStocks(app *types.App) ([]types.StockAlert, error) {
+	var monitorStocks []types.StockAlert
+	query := `
+    SELECT id,
+           user_id,
+           ticker,
+           alert_condition,
+           alert_price,
+           is_active
+    FROM stock_alert 
+    WHERE alert_name LIKE "c%";`
+
+	rows, err := app.DB.Query(query)
+	if err != nil {
+		fmt.Printf("Error while fetching data: %v\n", err)
+		return nil, fmt.Errorf("failed to prepare statement: %w", err)
+
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var startMonitoring types.StockAlert
+		err = rows.Scan(
+			&startMonitoring.ID,
+			&startMonitoring.UserID,
+			&startMonitoring.TickerToMonitor,
+			&startMonitoring.Condition,
+			&startMonitoring.AlertPrice,
+			&startMonitoring.Active,
+		)
+		if err != nil {
+			fmt.Printf("Error while scanning rows: %v\n", err)
+			return nil, err
+		}
+		monitorStocks = append(monitorStocks,startMonitoring)
+	}
+	return monitorStocks, nil
 }
