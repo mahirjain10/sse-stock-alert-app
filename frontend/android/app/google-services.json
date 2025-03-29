@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1070015519518",
+    "project_id": "stock-alert-app-d127e",
+    "storage_bucket": "stock-alert-app-d127e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1070015519518:android:35b49c2983b678c0c5c70f",
+        "android_client_info": {
+          "package_name": "com.example.stock_alert"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDvGC1LiV74XSDtMwH44vh7WxpZIKSMufo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

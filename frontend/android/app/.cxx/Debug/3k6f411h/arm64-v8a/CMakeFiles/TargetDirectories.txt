@@ -1,0 +1,2 @@
+C:/Users/Mahir/Documents/stock app/frontend/android/app/.cxx/Debug/3k6f411h/arm64-v8a/CMakeFiles/edit_cache.dir
+C:/Users/Mahir/Documents/stock app/frontend/android/app/.cxx/Debug/3k6f411h/arm64-v8a/CMakeFiles/rebuild_cache.dir
